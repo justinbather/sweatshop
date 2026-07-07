@@ -3,6 +3,7 @@ import { createServer } from "http";
 import { readFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { migrate } from "./migrate.js";
+import { mountAuth, requireAuth } from "./auth.js";
 import { api } from "./api.js";
 import { attachHub } from "./hub.js";
 import { startEnabledAgents, shutdown } from "./workers.js";
@@ -22,6 +23,9 @@ async function main() {
   mkdirSync(join(DATA_DIR, "outputs"), { recursive: true });
 
   const app = express();
+  if (!process.env.DASHBOARD_PASSWORD) console.warn("⚠ DASHBOARD_PASSWORD not set — dashboard is OPEN (fine locally, not on a public URL)");
+  mountAuth(app);
+  app.use(requireAuth);
   app.use("/api", api);
   app.get("/healthz", async (_req, res) => {
     try { await pool.query("SELECT 1"); res.json({ ok: true }); }

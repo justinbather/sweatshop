@@ -27,6 +27,7 @@ services:
       # point at Supabase/Neon via .env to skip the local db entirely
       DATABASE_URL: ${DATABASE_URL:-postgres://sweatshop:sweatshop@db:5432/sweatshop}
       LINEAR_TEAM: ${LINEAR_TEAM:-CON}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:-}
       TZ: ${TZ:-America/Toronto}   # slot times are interpreted in this timezone
     env_file:
       - path: .env

@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { Server } from "http";
+import { wsAuthorized } from "./auth.js";
 
 /**
  * WS hub: streams worker log lines + agent status to every connected dashboard
@@ -15,7 +16,8 @@ let wss: WebSocketServer | null = null;
 
 export function attachHub(server: Server): void {
   wss = new WebSocketServer({ server, path: "/ws" });
-  wss.on("connection", (ws) => {
+  wss.on("connection", (ws, req) => {
+    if (!wsAuthorized(req)) { ws.close(4401, "unauthorized"); return; }
     for (const msg of ring) ws.send(JSON.stringify(msg)); // replay history
   });
 }
