@@ -5,8 +5,9 @@
 # in Supabase Storage in hosted mode)
 data/
 
-# db dumps
-*.sql
+# db dumps (NOT db/migrations — those must ship)
+/dump.sql
+/*.dump
 
 # deps / build
 node_modules/
