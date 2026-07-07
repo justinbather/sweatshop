@@ -1,0 +1,27 @@
+{
+  "name": "@sweatshop/server",
+  "private": true,
+  "version": "2.0.0",
+  "type": "module",
+  "description": "Sweatshop v2 server \u2014 API + worker manager + web dashboard. Postgres-backed, Docker-deployable.",
+  "scripts": {
+    "start": "node --import tsx src/index.ts",
+    "dev": "STORAGE=pg node --import tsx src/index.ts",
+    "migrate-local": "node --import tsx src/migrate-local.ts",
+    "typecheck": "tsc --noEmit",
+    "assets-to-s3": "node --import tsx src/assets-to-s3.ts"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.16.0",
+    "tsx": "^4.22.4",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^26.0.1",
+    "@types/pg": "^8.16.0",
+    "@types/ws": "^8.5.12",
+    "typescript": "^6.0.3"
+  }
+}

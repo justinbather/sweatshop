@@ -1,0 +1,41 @@
+# Sweatshop v2 — local deployable stack: Postgres + the server (API, workers,
+# dashboard at http://localhost:8787). API keys go in .env (see .env.example) or
+# are entered later in the dashboard's Settings (stored in Postgres app_config).
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sweatshop
+      POSTGRES_PASSWORD: sweatshop
+      POSTGRES_DB: sweatshop
+    ports:
+      - "5433:5432"          # exposed for scripts (migrate-local) + psql
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sweatshop -d sweatshop"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # point at Supabase/Neon via .env to skip the local db entirely
+      DATABASE_URL: ${DATABASE_URL:-postgres://sweatshop:sweatshop@db:5432/sweatshop}
+      LINEAR_TEAM: ${LINEAR_TEAM:-CON}
+      TZ: ${TZ:-America/Toronto}   # slot times are interpreted in this timezone
+    env_file:
+      - path: .env
+        required: false            # keys can also be set in the dashboard Settings
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./data:/data               # refs/ + outputs/ (bind mount so migrate-local can fill it)
+    restart: unless-stopped
+
+volumes:
+  pgdata:

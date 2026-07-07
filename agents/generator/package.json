@@ -1,0 +1,35 @@
+{
+  "name": "@sweatshop/generator",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Generator agent — turns a brief (Linear ticket) into shoot-ready TikTok content concepts.",
+  "scripts": {
+    "generate": "tsx src/cli.ts",
+    "worker": "tsx src/worker.ts",
+    "check": "tsx src/worker.ts --check",
+    "creator": "tsx src/creator.ts",
+    "creator:check": "tsx src/creator.ts --check",
+    "poster": "tsx src/poster.ts",
+    "poster:check": "tsx src/poster.ts --check",
+    "typecheck": "tsc --noEmit",
+    "strategist": "tsx src/strategist.ts",
+    "strategist:check": "tsx src/strategist.ts --check",
+    "strategist:once": "tsx src/strategist.ts --once"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.109.0",
+    "@aws-sdk/client-s3": "^3.1080.0",
+    "@google/genai": "^2.10.0",
+    "@linear/sdk": "^87.0.0",
+    "pg": "^8.22.0",
+    "sharp": "^0.35.3",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.1",
+    "@types/pg": "^8.20.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  }
+}

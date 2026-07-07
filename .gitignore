@@ -1,0 +1,17 @@
+# secrets — NEVER commit (live API keys)
+.env
+
+# local data volume (reference images + generated slides — private, and they live
+# in Supabase Storage in hosted mode)
+data/
+
+# db dumps
+*.sql
+
+# deps / build
+node_modules/
+dist/
+
+# noise
+*.log
+.DS_Store

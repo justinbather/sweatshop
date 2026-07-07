@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sweatshop — Agentic Content Floor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- left nav -->
+    <nav id="sidebar">
+      <div class="brand">
+        <div class="brand-mark" id="brandMark">
+          <svg width="26" height="26" viewBox="0 0 10 12" shape-rendering="crispEdges" aria-hidden="true">
+            <defs>
+              <linearGradient id="drip" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#4fc3e8"/>
+                <stop offset="0.5" stop-color="#8b7cf0"/>
+                <stop offset="1" stop-color="#ed5fa6"/>
+              </linearGradient>
+            </defs>
+            <g fill="url(#drip)">
+              <rect x="4" y="0" width="2" height="2"/>
+              <rect x="3" y="2" width="4" height="1"/>
+              <rect x="3" y="3" width="4" height="1"/>
+              <rect x="2" y="4" width="6" height="1"/>
+              <rect x="2" y="5" width="6" height="1"/>
+              <rect x="1" y="6" width="8" height="1"/>
+              <rect x="1" y="7" width="8" height="1"/>
+              <rect x="1" y="8" width="8" height="1"/>
+              <rect x="2" y="9" width="6" height="1"/>
+              <rect x="3" y="10" width="4" height="1"/>
+            </g>
+            <rect x="3" y="6" width="1" height="2" fill="#ffffff" opacity="0.7"/>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-name">SWEATSHOP</span>
+          <span class="brand-sub">agent labor floor</span>
+        </div>
+      </div>
+      <ul class="nav" id="nav"></ul>
+      <div class="nav-foot">
+        <div class="conn">
+          <span class="dot ok"></span>
+          <span>orchestrator</span>
+          <span class="conn-state">live</span>
+        </div>
+        <div class="ver">v0.1.0 · prototype</div>
+      </div>
+    </nav>
+
+    <!-- main -->
+    <div id="main">
+      <header id="topbar">
+        <div class="run-meta">
+          <span class="board-tag">▣ CON · content pipeline</span>
+        </div>
+        <div class="top-right">
+          <div class="agent-pill" title="Generator worker">
+            <span class="dot" id="genDot"></span>
+            <span id="genLabel">generator · —</span>
+          </div>
+        </div>
+      </header>
+      <main id="view"></main>
+    </div>
+  </div>
+
+  <script src="sprites.js"></script>
+  <script src="data.js"></script>
+  <script src="ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
