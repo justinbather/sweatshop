@@ -192,6 +192,59 @@ channel + identity + rendering strategy.
 4–5 ≈ hours. Each step ships independently; a third archetype later (meme account,
 screenshot-thread account) = one more prompt pack + renderer, not a new pipeline.
 
+## v3 — the operations platform (added Jul 2026)
+
+**Goal:** Sweatshop becomes the single daily surface for *running Nourish* — money,
+app-store presence, marketing, and content in one place. The content engine is
+built; v3 wraps the business around it. (Enabler: the server is now public/hosted,
+so **webhooks are finally possible**.)
+
+### Workstream F — money & app visibility
+1. **RevenueCat webhooks → live events.** `POST /webhooks/revenuecat` (shared-secret
+   auth): INITIAL_PURCHASE / TRIAL_STARTED / TRIAL_CONVERTED / CANCELLATION /
+   EXPIRATION → instant Discord alerts (💰 new subscriber · ⚠️ cancellation) + an
+   `events` table. Real-time revenue feel, churn awareness, and event-grade data the
+   daily snapshots can't give.
+2. **App Store reviews watch.** Apple's public reviews RSS needs no auth: poll daily
+   → new reviews to Discord + a Reviews section in the Report; rating trend into
+   `app_metrics`. Stretch: agent-drafted replies to paste into App Store Connect.
+3. **Report v2.** History charts (sparklines from the stored daily series),
+   trial→paid conversion rate, churn rate, and — once cost tracking lands —
+   **cost per post / cost per trial**.
+4. **Attribution completion** (docs/ATTRIBUTION.md): the survey ships in the Nourish
+   app; PostHog collector pulls signups-by-account; Report gains *trials by
+   account/hook*; weekly attribution digest. The `posted_at` + RevenueCat data this
+   needs is already being collected.
+
+### Workstream G — marketing expansion & cost control
+5. **IG Reels / YouTube Shorts mirrors** via Postiz — per-account platform toggles;
+   near-zero marginal cost, de-risks the TikTok dependency.
+6. **Cost tracking + spend guards.** Record tokens/images consumed per post → cost
+   per post/trial in the Report; daily caps so an autopilot bug costs a day's
+   budget, not a month's.
+
+### Workstream H — UI v3: rebrand + simplification
+_Decided: keep the **Sweatshop** name; **clean & minimal** aesthetic (drop the
+pixel-art novelty — calm neutral surfaces, one accent, standard readable type; the
+pixel drip logo may survive as the mark)._
+
+- **IA consolidation: 9 tabs → 4.**
+  - **Home** — the Report + today's alerts (the morning view)
+  - **Content** — the Floor pipeline graph + agent controls (Agents tab folds in)
+  - **Board** — tickets (Approvals merges in; it's a Board column with buttons)
+  - **Setup** — Brand · Cast · Schedules · Keys (Settings/Brand/Cast merge)
+  - Logs becomes a slide-over panel available anywhere, not a tab.
+- Retire remaining novelty (sprites/avatars); quality floor: responsive, visible
+  keyboard focus.
+
+### Ops hygiene
+- External healthz watchdog (e.g. UptimeRobot free ping → alert if the platform
+  itself is down — Discord silence is currently the only signal).
+
+**Suggested order:** H (consolidate while surface area is small) → 1 + 2 (days of
+work, immediate daily value) → 3 → 6 → 5 → 4 (gated on the survey shipping in
+Nourish).
+
 ### Decisions still open
 - **Host/DB stack:** Supabase (Postgres + pgvector + S3-compatible storage + webhooks, one box) vs **Neon + Cloudflare R2**. Leaning Supabase for the consolidation.
 - **First v2 push:** Foundation + persist only, or also land the Hook/Post split?
