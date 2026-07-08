@@ -365,10 +365,11 @@
   }
 
   // ---- board: the full Linear surface -----------------------------------------
-  const BOARD_COLS = ['Generation Queue', 'Needs Approval', 'Creation Queue', 'Ready to Post', 'Posting Queue', 'Drafted', 'Published', 'Rejected'];
+  const BOARD_COLS = ['Generation Queue', 'Needs Approval', 'Revise', 'Creation Queue', 'Ready to Post', 'Posting Queue', 'Drafted', 'Published', 'Generated', 'Rejected'];
   // contextual quick actions per column: [label, targetState]
   const BOARD_ACTIONS = {
-    'Needs Approval': [['✓ Approve → Creation', 'Creation Queue'], ['✕ Reject', 'Rejected']],
+    'Needs Approval': [['✓ Approve → Creation', 'Creation Queue'], ['↻ Revise', 'Revise'], ['✕ Reject', 'Rejected']],
+    'Revise': [['✓ Done → Approval', 'Needs Approval']],
     'Ready to Post': [['→ Posting Queue', 'Posting Queue'], ['✕ Reject', 'Rejected']],
     'Rejected': [['↩ Generation Queue', 'Generation Queue']]
   };
