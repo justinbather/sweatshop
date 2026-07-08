@@ -184,13 +184,17 @@ api.get("/pipeline/counts", wrap(async () => {
   try { return { counts: await pipelineCounts() }; } catch (e) { return { error: e instanceof Error ? e.message : String(e) }; }
 }));
 api.get("/pipeline/stats", wrap(async () => {
-  const [hooks, posts, metrics, lastRun, cfg, infs] = await Promise.all([
+  const [hooks, posts, metrics, lastRun, cfg, infs, upcoming] = await Promise.all([
     pool.query("SELECT count(*)::int AS n FROM hooks"),
     pool.query("SELECT count(*)::int AS n FROM posts"),
     pool.query("SELECT count(*)::int AS n FROM account_metrics"),
     getConfigValue<string>("state:autopilotLastRun"),
     getConfigValue<Record<string, unknown>>("config"),
     pool.query("SELECT name FROM influencers WHERE enabled ORDER BY created_at"),
+    pool.query(`SELECT p.ticket, coalesce(i.name, p.influencer_id) AS account, p.scheduled_at
+                FROM posts p LEFT JOIN influencers i ON i.id = p.influencer_id
+                WHERE p.status = 'scheduled' AND p.scheduled_at > now()
+                ORDER BY p.scheduled_at LIMIT 5`),
   ]);
   return {
     hooks: hooks.rows[0].n,
@@ -198,7 +202,9 @@ api.get("/pipeline/stats", wrap(async () => {
     metricSamples: metrics.rows[0].n,
     lastRun: lastRun || null,
     autopilotTimes: (cfg?.autopilotTimes as string[]) || [],
+    reportTime: (cfg?.reportTime as string) || "08:00",
     imageModel: cfg?.imageModel === "openai" ? "GPT Image" : "Nano Banana Pro",
     influencers: infs.rows.map((r) => r.name),
+    upcoming: upcoming.rows.map((r) => ({ ticket: r.ticket, account: r.account, scheduledAt: r.scheduled_at })),
   };
 }));

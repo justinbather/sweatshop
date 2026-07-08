@@ -6,7 +6,7 @@
   <title>Sweatshop — Agentic Content Floor</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Silkscreen:wght@400;700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -40,7 +40,7 @@
         </div>
         <div class="brand-text">
           <span class="brand-name">SWEATSHOP</span>
-          <span class="brand-sub">agent labor floor</span>
+          <span class="brand-sub">nourish operations</span>
         </div>
       </div>
       <ul class="nav" id="nav"></ul>
@@ -50,7 +50,7 @@
           <span>orchestrator</span>
           <span class="conn-state">live</span>
         </div>
-        <div class="ver">v0.1.0 · prototype</div>
+        <div class="ver">v3 · operations</div>
       </div>
     </nav>
 
@@ -61,17 +61,23 @@
           <span class="board-tag">▣ CON · content pipeline</span>
         </div>
         <div class="top-right">
-          <div class="agent-pill" title="Generator worker">
-            <span class="dot" id="genDot"></span>
-            <span id="genLabel">generator · —</span>
-          </div>
+          <button type="button" class="btn sm" id="actToggle" title="live agent activity">◉ Activity</button>
         </div>
       </header>
       <main id="view"></main>
     </div>
+
+    <!-- live activity drawer -->
+    <aside id="drawer" aria-label="Agent activity">
+      <div class="drawer-head">
+        <h3>Activity</h3>
+        <span class="live"><span class="dot ok"></span>streaming</span>
+        <button type="button" class="btn sm" id="drawerClose">✕</button>
+      </div>
+      <div class="feed-list" id="drawerFeed"></div>
+    </aside>
   </div>
 
-  <script src="sprites.js"></script>
   <script src="data.js"></script>
   <script src="ui.js"></script>
   <script src="app.js"></script>

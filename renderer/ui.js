@@ -2,91 +2,68 @@
  * mounts the canvas, for Studio). Kept dumb: app.js owns routing + state.
  */
 (function () {
+  // agent accent colors (worker ids; also used for feed rows)
   const ACCENT = {
-    research: 'var(--research)', content: 'var(--content)',
-    creation: 'var(--creation)', orchestrator: 'var(--orchestrator)',
-    poster: 'var(--poster)',
-    generator: 'var(--content)' // the generator worker == content role (amber)
-  };
-  const STATE_LABEL = {
-    idle: 'wandering', thinking: 'thinking', calling_tool: 'calling tool',
-    waiting: 'waiting on job', error: 'error'
+    strategist: 'var(--a-strategist)', generator: 'var(--a-generator)',
+    creator: 'var(--a-creator)', poster: 'var(--a-poster)'
   };
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-  // ---- STUDIO: pipeline dataflow graph --------------------------------------
-  // The Floor is a top-down node graph: the main spine (clock → agents → queues →
-  // TikTok) in the middle column, datastores on the left, the bench branch on the
-  // right, and the analytics feedback loop drawn back up the right lane. Edges are
-  // real SVG paths computed from the rendered node positions (app.js drawPipeEdges).
-  function gAgent(id, role, name, does, runHint, area, sub) {
+  // ---- CONTENT: the pipeline as a simple ordered workflow ---------------------
+  function flowAgent(id, name, does, runHint, sub) {
     return `
-      <div class="pipe-node" data-g="${id}" data-agent-worker="${id}" data-node="${id}" style="--ac:${ACCENT[role]}; grid-area:${area}" title="${esc(does)}">
-        <div class="pn-top">
+      <div class="flow-agent" data-agent-worker="${id}" data-node="${id}" style="--ac:${ACCENT[id]}" title="${esc(does)}">
+        <div class="fa-top">
           <span class="pn-dot poll-dot"></span>
-          <span class="pn-name">${name}</span>
+          <span class="fa-name">${name}</span>
+          <span class="pn-state poll-label">…</span>
         </div>
-        <span class="pn-state poll-label">…</span>
         ${sub || ''}
         <div class="pn-activity" data-activity="${id}">—</div>
-        <div class="pn-ctl">
+        <div class="fa-ctl">
           <button type="button" class="btn sm pn-run" data-run="${id}" title="${runHint}">▶ run</button>
           <button type="button" class="poll-switch" data-poll-switch title="auto-polling on/off"></button>
         </div>
       </div>`;
   }
-  const gQueue = (key, stateName, area, opts = {}) => `
-    <div class="pipe-queue ${opts.cls || ''}" data-g="${key}" style="grid-area:${area}" ${opts.title ? `title="${esc(opts.title)}"` : ''}>
-      ${opts.gate ? '<span class="pq-gate">👤</span>' : ''}
-      <span class="pq-count" data-count="${esc(stateName)}">–</span>
-      <span class="pq-name">${opts.label || esc(stateName)}</span>
-    </div>`;
-  const gStore = (key, area, name, statHtml, flow) => `
-    <div class="pipe-store" data-g="${key}" style="grid-area:${area}" title="${esc(flow)}">
-      <span class="st-name">${name}</span>
-      ${statHtml}
-    </div>`;
-
-  function studio(state) {
+  const qChip = (state, label) => `<span class="q-chip"><b data-count="${esc(state)}">–</b> ${label || esc(state)}</span>`;
+  function flowStep(n, title, hint, inner) {
     return `
-      <div class="studio pipeline">
-        <div class="pipe-graph pipe-flow">
-          <svg class="pipe-edges" aria-hidden="true"></svg>
-          <div class="pipe-queue clock" data-g="clock" style="grid-area: 1 / 2" title="The Strategist fires at these times (Settings → Autopilot). Runs/day = posts/day per influencer.">
-            <span class="pq-gate">⏰</span>
-            <span class="pq-name" id="clockTimes">–</span>
-          </div>
-          ${gAgent('strategist', 'research', 'Strategist',
-            'Pulls Postiz channel analytics, writes 3 hooks (playbook + past performance), assigns one per influencer + a bench, opens the autopilot ticket.',
-            'force a run now (ignores the schedule)', '2 / 2')}
-          ${gQueue('q_gen', 'Generation Queue', '3 / 2', { label: 'Generation Queue' })}
-          ${gAgent('generator', 'content', 'Generator',
-            'One concept per hook (verbatim). Assigned concepts skip approval; the bench waits in Needs Approval.',
-            'process the queue once (only when auto-poll is off)', '4 / 2')}
-          ${gQueue('bench', 'Needs Approval', '5 / 3', { label: 'Needs Approval<br/>(bench)', title: 'Unassigned bench concepts wait here — approve one to send it to the Creator.' })}
-          ${gQueue('q_creation', 'Creation Queue', '5 / 2', { label: 'Creation Queue' })}
-          ${gAgent('creator', 'creation', 'Creator',
-            'Generates the 9:16 slides for each concept\u2019s assigned influencer (UGC photos or graphic cards per the account profile), then opens the post ticket.',
-            'process the queue once (only when auto-poll is off)', '6 / 2',
-            '<span class="pn-sub" id="pipeModel">…</span>')}
-          ${gQueue('q_posting', 'Posting Queue', '7 / 2', { label: 'Posting Queue' })}
-          ${gQueue('q_ready', 'Ready to Post', '7 / 3', { gate: true, label: 'Ready to Post<br/>(fix-it lane)', title: 'Incomplete sets bounce here. Comment \u201cregen N: \u2026\u201d to redo a slide, then move it back to Posting Queue.' })}
-          ${gAgent('poster', 'poster', 'Poster',
-            'Uploads slides + caption to Postiz and schedules into the character\u2019s next open slot (UPLOAD → TikTok inbox, never live). The tracker auto-moves tickets to Published once Postiz delivers.',
-            'process the queue once (only when auto-poll is off)', '8 / 2')}
-          ${gQueue('tiktok', 'Drafted', '9 / 2', { cls: 'done', label: '📱 TikTok inbox', title: 'Delivered to the account\u2019s TikTok inbox at the slot time — finish + publish in the app. Tickets auto-move to Published when Postiz confirms delivery.' })}
-
-          ${gStore('st_store', '2 / 1', '🗄 store',
-            '<span class="st-stat" id="storeStats">–</span>',
-            'hooks · posts · metrics (Postgres). The Strategist reads past hooks + performance and writes new ones; the Poster records every scheduled post.')}
-          ${gStore('st_cast', '6 / 1', '🎭 Cast',
-            '<span class="st-stat" id="castStats">–</span>',
-            'Influencers: reference images, design systems, TikTok accounts, timeslots. The Creator reads refs/design; the Poster reads accounts + slots.')}
-          ${gStore('st_outputs', '7 / 1', '🖼 outputs/',
-            '<span class="st-stat">generated slides</span>',
-            'The generated 9:16 slides. Creator writes, Poster uploads to Postiz.')}
-        </div>
+      <div class="flow-step">
+        <div class="fs-head"><span class="fs-n">${n}</span><span class="fs-title">${title}</span></div>
+        <p class="fs-hint">${hint}</p>
+        ${inner}
       </div>`;
+  }
+  function content() {
+    return `
+      <section class="page">
+        <div class="page-head">
+          <span class="eyebrow">pipeline</span>
+          <h1>Content</h1>
+          <p>What happens, in order. Flip a switch to pause a step; ▶ runs one by hand.</p>
+        </div>
+        <div class="flow pipe-flow">
+          ${flowStep(1, 'Hooks', 'The Strategist wakes on schedule, reads performance, and writes a hook per account (plus a bench spare).',
+            `<div class="fs-meta">⏰ <span id="clockTimes">–</span></div>` +
+            flowAgent('strategist', 'Strategist', 'Pulls channel analytics, writes hooks from the playbook + past performance, opens the run ticket.', 'run now (ignores the schedule)'))}
+          <div class="flow-arrow" aria-hidden="true"></div>
+          ${flowStep(2, 'Concepts', 'Each hook becomes a full post concept — script, caption, hashtags.',
+            flowAgent('generator', 'Generator', 'One concept per hook, verbatim. Assigned concepts continue automatically; the bench waits for your approval on the Board.', 'process the queue once (auto-poll must be off)') +
+            `<div class="fs-meta">${qChip('Generation Queue', 'queued')} ${qChip('Needs Approval', 'bench, awaiting you')}</div>`)}
+          <div class="flow-arrow" aria-hidden="true"></div>
+          ${flowStep(3, 'Images', 'Slides render per account — UGC photos or graphic cards, per each profile.',
+            flowAgent('creator', 'Creator', 'Renders the 9:16 slides for each concept\u2019s account using its reference images or design system.', 'process the queue once (auto-poll must be off)', '<span class="pn-sub" id="pipeModel">…</span>') +
+            `<div class="fs-meta">${qChip('Creation Queue', 'queued')} ${qChip('Ready to Post', 'fix-lane')}</div>`)}
+          <div class="flow-arrow" aria-hidden="true"></div>
+          ${flowStep(4, 'Schedule', 'Posts slot into each account\u2019s posting times via Postiz.',
+            flowAgent('poster', 'Poster', 'Uploads slides + caption and schedules into the account\u2019s next open slot. Incomplete sets bounce to the fix-lane.', 'process the queue once (auto-poll must be off)') +
+            `<div class="fs-meta">${qChip('Posting Queue', 'queued')}</div>`)}
+          <div class="flow-arrow" aria-hidden="true"></div>
+          ${flowStep(5, 'Live', 'At the slot time each post lands in its account\u2019s TikTok inbox — finish + publish in the app. Tickets confirm as Published automatically.',
+            `<div class="fs-meta big">${qChip('Drafted', 'in TikTok inbox')} ${qChip('Published', 'published')}</div>`)}
+        </div>
+      </section>`;
   }
 
   function feedItem(l) {
@@ -132,100 +109,9 @@
   }
 
   // ---- APPROVALS (real Linear "Needs Approval" tickets) ---------------------
-  function approvals(list, error) {
-    const items = list || [];
-    const head = `
-      <div class="page-head">
-        <span class="eyebrow">approval gate</span>
-        <h1>Approve before spend</h1>
-        <p>Real tickets in <b>Needs Approval</b> on the CON board. Approving moves the ticket to <b>Creation Queue</b>; nothing spends Higgsfield credits until then.</p>
-      </div>`;
-
-    if (error) {
-      return head + `<div class="empty-state">Couldn't reach Linear: ${esc(error)}<br/><span class="es-sub">Check your Linear key in Settings.</span></div>`;
-    }
-    if (items.length === 0) {
-      return head + `<div class="empty-state">Nothing awaiting approval.<br/><span class="es-sub">Generated concepts land here for review.</span></div>`;
-    }
-
-    const cards = items.map(a => `
-      <div class="card approve-card" data-approve="${a.id}">
-        <div class="ac-tophead">
-          <span class="ac-ident">${esc(a.identifier)}</span>
-          <span class="ac-concept">${esc(a.title)}</span>
-          ${a.url ? `<a class="ac-link" href="${esc(a.url)}" target="_blank" rel="noreferrer">open ↗</a>` : ''}
-        </div>
-        <div class="ac-concepts">${a.concepts ? mdLite(a.concepts) : '<span class="es-sub">No concepts posted yet.</span>'}</div>
-        <div class="ac-actions">
-          <button class="btn ok" data-act="approve" data-id="${a.id}">Approve → Creation</button>
-          <button class="btn danger sm" data-act="reject" data-id="${a.id}">Reject</button>
-        </div>
-      </div>`).join('');
-
-    return head +
-      `<div class="gate-banner">
-        <span class="gb-ico">⏸</span>
-        <span class="gb-text"><b>${items.length}</b> ticket${items.length === 1 ? '' : 's'} awaiting review</span>
-      </div>
-      <div class="approve-list">${cards}</div>`;
-  }
-
-  // ---- AGENTS ---------------------------------------------------------------
-  function agentsPage(state) {
-    const cards = state.agents.map(a => `
-      <div class="card agent-card ${a.workerId ? '' : 'unbuilt'}" style="--ac:${ACCENT[a.role]}">
-        <div class="acard-head">
-          <div class="acard-avatar"><canvas data-avatar="${a.role}" width="42" height="42"></canvas></div>
-          <div>
-            <div class="acard-name">${a.name}</div>
-            <div class="acard-title">${esc(a.title)}</div>
-          </div>
-          ${a.workerId
-            ? `<div class="poll" data-agent-worker="${a.workerId}"><span class="poll-dot"></span><span class="poll-label">…</span><div class="switch" data-poll-switch><i></i></div></div>`
-            : `<span class="acard-state muted">not built</span>`}
-        </div>
-        ${a.model ? `
-        <div class="acard-rows">
-          <div class="acard-row"><span class="k">Model</span><span class="v model">${esc(a.model)}</span></div>
-          ${a.tools ? `<div class="acard-row" style="display:block"><span class="k">Tools</span><div class="tools">${a.tools.map(t => `<span class="tool-tag">${esc(t)}</span>`).join('')}</div></div>` : ''}
-        </div>` : ''}
-        ${a.prompt ? `<div class="prompt-box"><span class="pb-label">system prompt</span>${esc(a.prompt)}</div>` : ''}
-      </div>`).join('');
-    return `
-      <div class="page-head">
-        <span class="eyebrow">agent roster</span>
-        <h1>Agents</h1>
-        <p>The workers that run your pipeline. Toggle polling per agent. Only built agents run — the rest are placeholders for what's coming.</p>
-      </div>
-      <div class="agents-grid">${cards}</div>`;
-  }
-
-  // ---- LOGS -----------------------------------------------------------------
-  function logs(state) {
-    const rows = state.log.map(l => `
-      <div class="log-row" style="--ac:${ACCENT[l.agent] || 'var(--text-faint)'}">
-        <span class="lt">${l.t}</span>
-        <span class="la">${esc(l.agent)}</span>
-        <span class="ltool">${esc(l.tool)}</span>
-        <span class="lm">${esc(l.msg)}</span>
-      </div>`).join('') || '<div class="feed-empty">No activity yet.</div>';
-    return `
-      <div class="page-head">
-        <span class="eyebrow">event stream</span>
-        <h1>Logs</h1>
-        <p>Live output from the agent workers, newest first.</p>
-      </div>
-      <div class="card log-wrap" id="logWrap">${rows}</div>`;
-  }
-
-  // ---- SETTINGS -------------------------------------------------------------
   function settings() {
     return `
-      <div class="page-head">
-        <span class="eyebrow">configuration</span>
-        <h1>Settings</h1>
-        <p>Credentials the agents use. Stored locally in <code>~/.sweatshop/secrets.json</code> — nothing leaves this machine.</p>
-      </div>
+      <p class="es-sub setup-note">API keys the agents use at runtime, autopilot run times, and the daily-report time.</p>
       <div class="settings">
         <div class="card set-card">
           <h3>Keys</h3>
@@ -334,11 +220,7 @@
   // ---- BRAND ----------------------------------------------------------------
   function brand() {
     return `
-      <div class="page-head">
-        <span class="eyebrow">product context</span>
-        <h1>Brand</h1>
-        <p>What the agents make content for. This brief is injected into every agent — Research finds angles that fit it, the Generator writes in this voice, Creation matches the look. Filled once, used everywhere.</p>
-      </div>
+      <p class="es-sub setup-note">What the app is — injected into every agent prompt. brief = "what the app is", ticket = "this specific angle".</p>
       <form id="brandForm" class="brand-form" onsubmit="return false">
         <div class="card set-card">
           <h3>Product</h3>
@@ -400,20 +282,22 @@ Myth-bust — correct a common belief"></textarea></div>
       </section>`;
   }
 
-  function report() {
+  function home() {
     return `
       <section class="page">
         <div class="page-head">
-          <span class="eyebrow">growth</span>
-          <h1>Report</h1>
-          <p>Business metrics (RevenueCat), channel growth (Postiz), and content activity — collected daily, computed live. <span class="es-sub" id="repMeta"></span></p>
+          <span class="eyebrow">good to see you</span>
+          <h1>Today</h1>
+          <p class="es-sub" id="repMeta"></p>
         </div>
-        <div class="rep-tabs" id="repTabs">
-          <button type="button" class="btn sm rep-tab active" data-rep="business">💰 Business</button>
-          <button type="button" class="btn sm rep-tab" data-rep="channels">📈 Channels</button>
-          <button type="button" class="btn sm rep-tab" data-rep="content">📮 Content</button>
+        <div class="rep-tabs" id="homeTabs">
+          <button type="button" class="btn sm rep-tab active" data-rep="overview">Overview</button>
+          <button type="button" class="btn sm rep-tab" data-rep="business">Business</button>
+          <button type="button" class="btn sm rep-tab" data-rep="channels">Channels</button>
+          <button type="button" class="btn sm rep-tab" data-rep="content">Content</button>
         </div>
-        <div id="reportRoot"><div class="empty-state">Loading…</div></div>
+        <div id="homeOverview"><div class="empty-state">Loading…</div></div>
+        <div id="reportRoot" hidden></div>
         <div class="cast-actions">
           <button type="button" class="btn" id="repCollect">⟳ Collect now</button>
           <span class="key-status" id="repStatus"></span>
@@ -421,22 +305,32 @@ Myth-bust — correct a common belief"></textarea></div>
       </section>`;
   }
 
-  function cast() {
+  function setup() {
     return `
       <section class="page">
         <div class="page-head">
-          <span class="eyebrow">the cast</span>
-          <h1>Influencers</h1>
-          <p>Each influencer posts to its own TikTok account, with its own reference images and daily posting times. Generated content fans out to every <em>enabled</em> influencer, and their posts fill each character's open time slots across days.</p>
+          <span class="eyebrow">configuration</span>
+          <h1>Setup</h1>
         </div>
+        <div class="rep-tabs" id="setupTabs">
+          <button type="button" class="btn sm rep-tab active" data-setup="cast">Cast</button>
+          <button type="button" class="btn sm rep-tab" data-setup="brand">Brand</button>
+          <button type="button" class="btn sm rep-tab" data-setup="keys">Keys & schedules</button>
+        </div>
+        <div id="setupBody"></div>
+      </section>`;
+  }
+
+  function cast() {
+    return `
+        <p class="es-sub setup-note">Each influencer posts to its own TikTok account, with its own reference images, design system, and posting times. Content fans out to every enabled influencer.</p>
         <div id="castList" class="cast-list"></div>
         <div class="cast-actions">
           <button type="button" class="btn" id="castAdd">+ Add influencer</button>
           <button type="button" class="btn primary" id="castSave">Save cast</button>
           <span class="key-status" id="castStatus"></span>
-        </div>
-      </section>`;
+        </div>`;
   }
 
-  window.UI = { studio, feedItems, feedItem, approvals, agentsPage, logs, settings, brand, cast, report, board, mdLite };
+  window.UI = { home, content, setup, board, settings, brand, cast, feedItems, feedItem, mdLite };
 })();

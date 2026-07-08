@@ -2,19 +2,15 @@
 (function () {
   const { STATE, subscribe, emit } = window.DATA;
 
-  let approvals = [];        // real Needs Approval tickets (from Linear)
+  let countsCache = {};      // Linear column counts (Board badge + flow chips)
   let agentStatusCache = []; // real agent worker status (from main process)
 
   // ---- pixel icons (rect grids -> crisp SVG) --------------------------------
   const G = {
-    studio:    ['00000000','01111110','01000010','01011010','01000010','01111110','00011000','00111100'],
-    approvals: ['00000010','00000110','00001100','11011000','01110000','00110000','00000000','00000000'],
-    agents:    ['00110011','01111111','00110011','00000000','01100110','11111111','01100110','00000000'],
-    logs:      ['11111110','00000000','11111100','00000000','11111110','00000000','11110000','00000000'],
-    brand:     ['00011000','00011000','00111100','00111100','01111110','01111110','00111100','00000000'],
-    settings:  ['00111100','01111110','11100111','11000011','11000011','11100111','01111110','00111100'],
-    report:    ['00000000','00000011','00000011','00011011','00011011','11011011','11011011','00000000'],
-    board:     ['11101110','11101110','00000000','11101110','11101110','00000000','11101110','11101110']
+    home:    ['00011000','00111100','01111110','11111111','11100111','11100111','11100111','11111111'],
+    content: ['11000000','11110000','11111100','11111111','11111100','11110000','11000000','00000000'],
+    board:   ['11101110','11101110','00000000','11101110','11101110','00000000','11101110','11101110'],
+    setup:   ['00111100','01111110','11100111','11000011','11000011','11100111','01111110','00111100']
   };
   function icon(name, size = 16) {
     const g = G[name] || G.studio; const n = g.length; const cell = size / n;
@@ -25,18 +21,13 @@
   }
 
   const TABS = [
-    { id: 'studio',    label: 'Floor' },
-    { id: 'report',    label: 'Report' },
-    { id: 'board',     label: 'Board' },
-    { id: 'approvals', label: 'Approvals', badge: () => approvals.length, warn: true },
-    { id: 'agents',    label: 'Agents' },
-    { id: 'brand',     label: 'Brand' },
-    { id: 'cast',      label: 'Cast' },
-    { id: 'logs',      label: 'Logs' },
-    { id: 'settings',  label: 'Settings' }
+    { id: 'home',    label: 'Home' },
+    { id: 'content', label: 'Content' },
+    { id: 'board',   label: 'Board', badge: () => countsCache['Needs Approval'] || 0, warn: true },
+    { id: 'setup',   label: 'Setup' }
   ];
 
-  let current = 'studio';
+  let current = 'home';
 
   // ---- nav ------------------------------------------------------------------
   function renderNav() {
@@ -47,24 +38,6 @@
     }).join('');
   }
 
-  // ---- avatar (reuse the office sprites) ------------------------------------
-  function drawAvatar(canvas, role) {
-    const ctx = canvas.getContext('2d'); ctx.imageSmoothingEnabled = false;
-    const { BODY, ROLE } = window.SPRITES; const pal = ROLE[role].palette;
-    const s = 2, ox = 9, oy = 4;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    BODY.forEach((row, r) => { for (let c = 0; c < row.length; c++) {
-      const col = pal[row[c]]; if (!col || row[c] === '.') continue;
-      ctx.fillStyle = col; ctx.fillRect(ox + c * s, oy + r * s, s, s);
-    }});
-    const prop = ROLE[role].prop, ac = ROLE[role].accent;
-    const p = (x, y, w, h) => { ctx.fillStyle = ac; ctx.fillRect(ox + x * s, oy + y * s, w * s, h * s); };
-    if (prop === 'headset') { p(2, 2, 8, 1); p(1, 4, 2, 3); p(9, 4, 2, 3); }
-    else if (prop === 'beret') { p(1, 0, 10, 2); p(2, -1, 6, 1); }
-    else if (prop === 'visor') { p(2, 5, 8, 2); }
-    else if (prop === 'glasses') { p(2, 5, 3, 2); p(7, 5, 3, 2); }
-  }
-
   // ---- real agent status → topbar pill + floor chips + agent toggles --------
   function pollLabel(st) {
     if (!st) return '—';
@@ -73,19 +46,6 @@
   function updateAgentsUI() {
     const byId = {};
     agentStatusCache.forEach(a => { byId[a.id] = a; });
-
-    const gen = byId['generator'];
-    const genDot = document.getElementById('genDot');
-    const genLabel = document.getElementById('genLabel');
-    if (genLabel) genLabel.textContent = 'generator · ' + pollLabel(gen);
-    if (genDot) genDot.classList.toggle('ok', !!(gen && gen.running));
-
-    document.querySelectorAll('.agent-chip[data-chip]').forEach(el => {
-      const st = byId[el.dataset.chip];
-      el.classList.toggle('idle', !(st && st.running));
-      const stateEl = el.querySelector('.ac-state');
-      if (stateEl) stateEl.textContent = pollLabel(st);
-    });
 
     document.querySelectorAll('[data-agent-worker]').forEach(el => {
       const id = el.dataset.agentWorker;
@@ -108,129 +68,65 @@
     if (pipeTimer) { clearInterval(pipeTimer); pipeTimer = null; }
     const view = document.getElementById('view');
     switch (current) {
-      case 'studio':    view.innerHTML = window.UI.studio(STATE); mountStudio(); break;
-      case 'report':    view.innerHTML = window.UI.report(); mountReport(); break;
-      case 'board':     view.innerHTML = window.UI.board(); mountBoard(); break;
-      case 'approvals': view.innerHTML = window.UI.approvals(approvals); refreshApprovals(); break;
-      case 'agents':    view.innerHTML = window.UI.agentsPage(STATE); mountAvatars(); mountAgents(); break;
-      case 'brand':     view.innerHTML = window.UI.brand(); mountBrand(); break;
-      case 'cast':      view.innerHTML = window.UI.cast(); mountCast(); break;
-      case 'logs':      view.innerHTML = window.UI.logs(STATE); break;
-      case 'settings':  view.innerHTML = window.UI.settings(); mountSettings(); break;
+      case 'home':    view.innerHTML = window.UI.home(); mountHome(); break;
+      case 'content': view.innerHTML = window.UI.content(); mountContent(); break;
+      case 'board':   view.innerHTML = window.UI.board(); mountBoard(); break;
+      case 'setup':   view.innerHTML = window.UI.setup(); mountSetup('cast'); break;
     }
     renderNav();
     updateAgentsUI();
   }
 
+  // ---- setup: Cast / Brand / Keys & schedules under one roof -----------------
+  function mountSetup(which) {
+    const body = document.getElementById('setupBody');
+    const tabs = document.getElementById('setupTabs');
+    if (!body) return;
+    const show = (w) => {
+      if (w === 'cast') { body.innerHTML = window.UI.cast(); mountCast(); }
+      else if (w === 'brand') { body.innerHTML = window.UI.brand(); mountBrand(); }
+      else { body.innerHTML = window.UI.settings(); mountSettings(); }
+    };
+    if (tabs && !tabs.dataset.bound) {
+      tabs.dataset.bound = '1';
+      tabs.addEventListener('click', (e) => {
+        const t = e.target.closest('[data-setup]');
+        if (!t) return;
+        tabs.querySelectorAll('.rep-tab').forEach(b => b.classList.toggle('active', b === t));
+        show(t.dataset.setup);
+      });
+    }
+    show(which);
+  }
+
+
   // ---- pipeline graph: SVG edges between the laid-out nodes ------------------
   // Solid = the main flow; dashed = branches; dim dashed = datastore reads/writes.
   // lane 'left'/'right' routes long edges out to a side lane (the feedback loop).
-  const PIPE_EDGES = [
-    { f: 'clock', t: 'strategist', label: 'schedule' },
-    { f: 'strategist', t: 'q_gen', label: 'hooks' },
-    { f: 'q_gen', t: 'generator' },
-    { f: 'generator', t: 'q_creation', label: 'assigned' },
-    { f: 'generator', t: 'bench', label: 'bench', dash: true },
-    { f: 'bench', t: 'q_creation', label: 'you approve', dash: true },
-    { f: 'q_creation', t: 'creator' },
-    { f: 'creator', t: 'q_posting', label: 'post tickets' },
-    { f: 'poster', t: 'q_ready', label: 'incomplete set', dash: true },
-    { f: 'q_ready', t: 'q_posting', label: 'regen → re-approve', dash: true },
-    { f: 'q_posting', t: 'poster' },
-    { f: 'poster', t: 'tiktok', label: 'slot time' },
-    { f: 'st_store', t: 'strategist', label: 'hooks + perf', dash: true, dim: true },
-    { f: 'poster', t: 'st_store', label: 'records post', dash: true, dim: true, lane: 'left' },
-    { f: 'st_cast', t: 'creator', label: 'refs · design', dash: true, dim: true },
-    { f: 'st_cast', t: 'poster', label: 'accounts · slots', dash: true, dim: true },
-    { f: 'creator', t: 'st_outputs', label: 'slides', dash: true, dim: true },
-    { f: 'st_outputs', t: 'poster', dash: true, dim: true },
-    { f: 'tiktok', t: 'strategist', label: '⟲ Postiz analytics (7d)', dash: true, lane: 'right' }
-  ];
-
-  function drawPipeEdges() {
-    const graph = document.querySelector('.pipe-graph');
-    const svg = document.querySelector('.pipe-edges');
-    if (!graph || !svg) return;
-    const rc = graph.getBoundingClientRect();
-    svg.setAttribute('viewBox', `0 0 ${rc.width} ${rc.height}`);
-    const rel = (el) => {
-      const r = el.getBoundingClientRect();
-      return { l: r.left - rc.left, t: r.top - rc.top, r: r.right - rc.left, b: r.bottom - rc.top,
-               cx: (r.left + r.right) / 2 - rc.left, cy: (r.top + r.bottom) / 2 - rc.top };
-    };
-    const parts = [
-      `<defs>
-        <marker id="pArr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0.5 L7.5,4 L0,7.5 Z" fill="var(--text-faint)"/>
-        </marker>
-      </defs>`
-    ];
-    for (const e of PIPE_EDGES) {
-      const fe = graph.querySelector(`[data-g="${e.f}"]`);
-      const te = graph.querySelector(`[data-g="${e.t}"]`);
-      if (!fe || !te) continue;
-      const A = rel(fe), B = rel(te);
-      let d, lx, ly;
-      if (e.lane === 'right') {
-        const X = Math.max(A.r, B.r) + 56;
-        d = `M ${A.r} ${A.cy} C ${X} ${A.cy}, ${X} ${B.cy}, ${B.r + 2} ${B.cy}`;
-        lx = X + 4; ly = (A.cy + B.cy) / 2;
-      } else if (e.lane === 'left') {
-        const X = Math.min(A.l, B.l) - 44;
-        d = `M ${A.l} ${A.cy} C ${X} ${A.cy}, ${X} ${B.cy}, ${B.l - 2} ${B.cy}`;
-        lx = X - 4; ly = (A.cy + B.cy) / 2;
-      } else if (B.t >= A.b - 6 && Math.abs(B.cx - A.cx) < 60) {
-        // straight down the spine
-        const g = Math.max(12, (B.t - A.b) / 2);
-        d = `M ${A.cx} ${A.b} C ${A.cx} ${A.b + g}, ${B.cx} ${B.t - g}, ${B.cx} ${B.t - 2}`;
-        lx = A.cx + 8; ly = (A.b + B.t) / 2;
-      } else if (B.t > A.b) {
-        // down + across (e.g. Cast → Poster)
-        const ex = B.cx > A.cx ? B.l - 2 : B.r + 2;
-        d = `M ${A.cx} ${A.b} C ${A.cx} ${A.b + 36}, ${ex + (B.cx > A.cx ? -36 : 36)} ${B.cy}, ${ex} ${B.cy}`;
-        lx = A.cx + (B.cx > A.cx ? 14 : -14); ly = (A.b + B.cy) / 2;
-      } else {
-        // lateral
-        const sx = B.cx > A.cx ? A.r : A.l;
-        const ex = B.cx > A.cx ? B.l - 2 : B.r + 2;
-        const mx = (sx + ex) / 2;
-        d = `M ${sx} ${A.cy} C ${mx} ${A.cy}, ${mx} ${B.cy}, ${ex} ${B.cy}`;
-        lx = mx; ly = (A.cy + B.cy) / 2 - 5;
-      }
-      const cls = `pe${e.dash ? ' dash' : ''}${e.dim ? ' dim' : ''}`;
-      parts.push(`<path class="${cls}" d="${d}" marker-end="url(#pArr)"/>`);
-      if (e.label) parts.push(`<text class="pe-label${e.dim ? ' dim' : ''}" x="${lx}" y="${ly}" text-anchor="${e.lane === 'left' ? 'end' : e.lane === 'right' ? 'start' : 'middle'}">${e.label}</text>`);
-    }
-    svg.innerHTML = parts.join('');
-  }
-  let pipeResizeBound = false;
-
   let pipeTimer = null;
   async function refreshPipeline() {
     const p = window.studio && window.studio.pipeline;
-    if (!p || current !== 'studio') return;
+    if (!p) return;
     const [countsRes, stats] = await Promise.all([p.counts(), p.stats()]);
-    if (current !== 'studio') return;
-    const counts = (countsRes && countsRes.counts) || {};
+    countsCache = (countsRes && countsRes.counts) || {};
+    renderNav(); // Board badge
     document.querySelectorAll('[data-count]').forEach(el => {
-      el.textContent = counts[el.dataset.count] ?? 0;
-      el.classList.toggle('has', (counts[el.dataset.count] || 0) > 0);
+      el.textContent = countsCache[el.dataset.count] ?? 0;
+      el.classList.toggle('has', (countsCache[el.dataset.count] || 0) > 0);
     });
     const clock = document.getElementById('clockTimes');
-    if (clock) clock.textContent = (stats.autopilotTimes.length ? stats.autopilotTimes.join(' · ') : 'no run times set (Settings → Autopilot)')
-      + (stats.lastRun ? ` — last run ${new Date(stats.lastRun).toLocaleString()}` : ' — never run');
+    if (clock) clock.textContent = (stats.autopilotTimes.length ? stats.autopilotTimes.join(' · ') : 'no run times set (Setup → Keys & schedules)')
+      + (stats.lastRun ? ` — last run ${new Date(stats.lastRun).toLocaleString()}` : '');
     const model = document.getElementById('pipeModel');
     if (model) model.textContent = stats.imageModel;
-    const store = document.getElementById('storeStats');
-    if (store) store.textContent = `${stats.hooks} hooks · ${stats.posts} posts · ${stats.metricSamples} metric samples`;
-    const cast = document.getElementById('castStats');
-    if (cast) cast.textContent = stats.influencers.length ? stats.influencers.join(', ') : 'no influencers enabled';
+    return stats;
   }
 
-  function mountStudio() {
-    // controls: ▶ run-now + auto-poll switches on the agent nodes
+
+  function mountContent() {
     const flow = document.querySelector('.pipe-flow');
-    if (flow) {
+    if (flow && !flow.dataset.bound) {
+      flow.dataset.bound = '1';
       flow.addEventListener('click', async (e) => {
         const api = window.studio && window.studio.agents;
         if (!api) return;
@@ -250,7 +146,6 @@
         }
       });
     }
-    // show last-known activity immediately
     Object.keys(agentActivity).forEach(id => {
       const a = agentActivity[id];
       const act = document.querySelector(`[data-activity="${id}"]`);
@@ -258,111 +153,11 @@
       const node = document.querySelector(`[data-node="${id}"]`);
       if (node) { node.classList.toggle('working', a.kind === 'working'); node.classList.toggle('error', a.kind === 'error'); }
     });
-    refreshPipeline().then(drawPipeEdges);
+    refreshPipeline();
     if (pipeTimer) clearInterval(pipeTimer);
-    pipeTimer = setInterval(() => refreshPipeline().then(drawPipeEdges), 30000);
-
-    // edges depend on rendered positions: draw now, after fonts settle, on resize
-    drawPipeEdges();
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawPipeEdges);
-    setTimeout(drawPipeEdges, 350);
-    if (!pipeResizeBound) {
-      pipeResizeBound = true;
-      let t = null;
-      window.addEventListener('resize', () => {
-        if (current !== 'studio') return;
-        clearTimeout(t); t = setTimeout(drawPipeEdges, 120);
-      });
-    }
-  }
-  function mountAvatars() {
-    document.querySelectorAll('canvas[data-avatar]').forEach(cv => drawAvatar(cv, cv.dataset.avatar));
+    pipeTimer = setInterval(refreshPipeline, 30000);
   }
 
-  // ---- settings: persist keys to the shared secret store --------------------
-  async function mountSettings() {
-    const api = window.studio && window.studio.secrets;
-    if (!api) {
-      document.querySelectorAll('[data-status]').forEach(el => { el.textContent = 'run in app'; });
-      return;
-    }
-    async function refresh() {
-      const status = await api.status();
-      document.querySelectorAll('[data-status]').forEach(el => {
-        const s = status[el.dataset.status];
-        el.textContent = s && s.set ? `● saved ${s.masked}` : 'not set';
-        el.classList.toggle('ok', !!(s && s.set));
-      });
-    }
-    await refresh();
-    const save = async (name) => {
-      const input = document.querySelector(`[data-secret="${name}"]`);
-      const value = (input.value || '').trim();
-      if (!value) return;
-      const btn = document.querySelector(`[data-save-secret="${name}"]`);
-      if (btn) btn.disabled = true;
-      await api.set(name, value);
-      input.value = '';
-      await refresh();
-      if (btn) btn.disabled = false;
-    };
-    document.querySelectorAll('[data-save-secret]').forEach(btn =>
-      btn.addEventListener('click', () => save(btn.dataset.saveSecret)));
-    document.querySelectorAll('[data-secret]').forEach(input =>
-      input.addEventListener('keydown', e => { if (e.key === 'Enter') save(input.dataset.secret); }));
-
-    // autopilot run times (non-secret config)
-    const cfgApi = window.studio && window.studio.config;
-    const apSlots = document.getElementById('autopilotSlots');
-    if (cfgApi && apSlots) {
-      let times = [];
-      try { times = (await cfgApi.get()).autopilotTimes || []; } catch { /* fresh */ }
-      const renderTimes = () => {
-        apSlots.innerHTML = times.map(t =>
-          `<span class="slot-chip">${t}<button type="button" class="slot-del" data-aptime="${t}" title="Remove">×</button></span>`).join('')
-          + '<span class="slot-add"><input type="time" class="field slot-input" id="apTimeInput" value="09:00" />'
-          + '<button type="button" class="btn sm" id="apTimeAdd">+ Add</button></span>';
-      };
-      apSlots.addEventListener('click', async (e) => {
-        const del = e.target.closest('[data-aptime]');
-        if (del) { times = times.filter(t => t !== del.dataset.aptime); await cfgApi.set({ autopilotTimes: times }); renderTimes(); return; }
-        if (e.target.closest('#apTimeAdd')) {
-          const inp = document.getElementById('apTimeInput');
-          const t = inp && inp.value;
-          if (t && !times.includes(t)) { times = [...times, t].sort(); await cfgApi.set({ autopilotTimes: times }); renderTimes(); }
-        }
-      });
-      renderTimes();
-    }
-
-    // daily report time (non-secret config)
-    const cfgR = window.studio && window.studio.config;
-    const repTime = document.querySelector('[data-config-time="reportTime"]');
-    if (cfgR && repTime) {
-      const st = document.querySelector('[data-config-status="reportTime"]');
-      cfgR.get().then(c => { if (c.reportTime) repTime.value = c.reportTime; if (st) st.textContent = '● saved'; });
-      repTime.addEventListener('change', async () => {
-        if (st) st.textContent = 'saving…';
-        await cfgR.set({ reportTime: repTime.value });
-        if (st) { st.textContent = '● saved'; st.classList.add('ok'); }
-      });
-    }
-
-    // image-model toggle (non-secret config)
-    const cfg = window.studio && window.studio.config;
-    const modelSel = document.querySelector('[data-config="imageModel"]');
-    if (cfg && modelSel) {
-      const statusEl = document.querySelector('[data-config-status="imageModel"]');
-      const conf = await cfg.get();
-      modelSel.value = conf.imageModel === 'openai' ? 'openai' : 'gemini';
-      if (statusEl) statusEl.textContent = '● saved';
-      modelSel.addEventListener('change', async () => {
-        if (statusEl) statusEl.textContent = 'saving…';
-        await cfg.set({ imageModel: modelSel.value });
-        if (statusEl) { statusEl.textContent = '● saved'; statusEl.classList.add('ok'); }
-      });
-    }
-  }
 
   // ---- board: the full Linear surface -----------------------------------------
   const BOARD_COLS = ['Generation Queue', 'Needs Approval', 'Revise', 'Creation Queue', 'Ready to Post', 'Posting Queue', 'Drafted', 'Published', 'Generated', 'Rejected'];
@@ -533,28 +328,83 @@
         <p class="desc">Per-post views/likes aren't available yet (channel-level only) — “what's working” sharpens once the attribution survey ships (docs/ATTRIBUTION.md).</p>
       </div>`;
   }
-  async function mountReport() {
+  function renderOverview(r, stats) {
+    const esc2 = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const order = ['rc_mrr', 'rc_active_subscriptions', 'rc_active_trials', 'rc_new_customers'];
+    const byLabel = Object.fromEntries(r.business.map(m => [m.label, m]));
+    const picks = order.map(k => byLabel[k]).filter(Boolean);
+    const biz = (picks.length ? picks : r.business.slice(0, 4)).map(m => `
+      <div class="rep-card">
+        <span class="rc-label">${esc2(RC_NAMES[m.label] || m.label.replace(/^rc_/, ''))}</span>
+        <span class="rc-value">${esc2(m.value)}</span>
+        <span class="rc-deltas">${deltaHtml(m.d1)} today · ${deltaHtml(m.d7)} 7d</span>
+      </div>`).join('')
+      || `<div class="empty-state">No business metrics yet${r.meta.revenuecatConfigured ? ' — hit Collect now' : ' — add the RevenueCat key in Setup, then Collect now'}.</div>`;
+    const upcoming = (stats.upcoming || []).map(u => `
+      <li><b>${new Date(u.scheduledAt).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}</b>
+          ${esc2(u.account)} <span class="es-sub">${esc2(u.ticket)}</span></li>`).join('')
+      || '<li class="es-sub">Nothing scheduled — run the Strategist on the Content page.</li>';
+    return `
+      <div class="rep-grid">${biz}</div>
+      <div class="ov-grid">
+        <div class="ov-card">
+          <h3>📅 Next posts</h3>
+          <ul class="ov-list">${upcoming}</ul>
+        </div>
+        <div class="ov-card">
+          <h3>⚙️ Rhythm</h3>
+          <ul class="ov-list">
+            <li>Autopilot runs: <b>${stats.autopilotTimes.length ? stats.autopilotTimes.join(' · ') : 'not set'}</b></li>
+            <li>Daily report: <b>${esc2(r.meta.reportTime)}</b></li>
+            <li>Image model: <b>${esc2(stats.imageModel)}</b></li>
+            <li>Accounts: <b>${(stats.influencers || []).join(', ') || 'none'}</b></li>
+          </ul>
+        </div>
+        <div class="ov-card">
+          <h3>📮 Last 7 days</h3>
+          <ul class="ov-list">
+            <li>Posts scheduled: <b>${r.content.posts7d}</b></li>
+            <li>Confirmed published: <b>${r.content.published7d ?? 0}</b></li>
+            <li>Hooks written: <b>${r.content.hooks7d}</b></li>
+            <li>Awaiting your approval: <b>${countsCache['Needs Approval'] || 0}</b> <span class="es-sub">(Board)</span></li>
+          </ul>
+        </div>
+      </div>`;
+  }
+
+  async function mountHome() {
     const api = window.studio && window.studio.report;
     const root = document.getElementById('reportRoot');
-    if (!api || !root) return;
+    const overview = document.getElementById('homeOverview');
+    if (!api || !root || !overview) return;
     const meta = document.getElementById('repMeta');
     const status = document.getElementById('repStatus');
-    let cached = null;
-    repSection = 'business'; // markup marks Business active on mount
+    let cached = null, statsCached = null;
+    repSection = 'overview';
     async function load(r) {
       if (!r) r = await api.get();
       cached = r;
-      root.innerHTML = renderReport(r);
-      if (meta) meta.textContent = `Last collected: ${r.meta.lastCollected ? new Date(r.meta.lastCollected).toLocaleString() : 'never'} · daily at ${r.meta.reportTime}`;
+      if (!statsCached) statsCached = (await refreshPipeline()) || { autopilotTimes: [], influencers: [], imageModel: '', upcoming: [] };
+      paint();
+      if (meta) meta.textContent = `Last collected ${r.meta.lastCollected ? new Date(r.meta.lastCollected).toLocaleString() : 'never'} · daily report at ${r.meta.reportTime}`;
+    }
+    function paint() {
+      if (repSection === 'overview') {
+        overview.hidden = false; root.hidden = true;
+        overview.innerHTML = renderOverview(cached, statsCached);
+      } else {
+        overview.hidden = true; root.hidden = false;
+        root.innerHTML = renderReport(cached);
+      }
     }
     await load();
-    const tabs = document.getElementById('repTabs');
+    const tabs = document.getElementById('homeTabs');
     if (tabs) tabs.addEventListener('click', (e) => {
       const t = e.target.closest('[data-rep]');
       if (!t || !cached) return;
       repSection = t.dataset.rep;
       tabs.querySelectorAll('.rep-tab').forEach(b => b.classList.toggle('active', b === t));
-      root.innerHTML = renderReport(cached);
+      paint();
     });
     const btn = document.getElementById('repCollect');
     if (btn) btn.addEventListener('click', async () => {
@@ -567,6 +417,7 @@
       btn.disabled = false;
     });
   }
+
 
   // ---- brand: load/save the product brief -----------------------------------
   async function mountBrand() {
@@ -743,34 +594,6 @@
   }
 
   // ---- agents tab: wire the per-agent polling switches ----------------------
-  async function mountAgents() {
-    const api = window.studio && window.studio.agents;
-    if (!api) return;
-    agentStatusCache = await api.list();
-    updateAgentsUI();
-    document.querySelectorAll('[data-agent-worker] [data-poll-switch]').forEach(sw => {
-      sw.addEventListener('click', async () => {
-        const id = sw.closest('[data-agent-worker]').dataset.agentWorker;
-        const enable = !sw.classList.contains('on');
-        agentStatusCache = await api.setEnabled(id, enable);
-        updateAgentsUI();
-      });
-    });
-  }
-
-  // ---- approval gate (real Linear data) -------------------------------------
-  async function refreshApprovals() {
-    const api = window.studio && window.studio.approvals;
-    if (!api) return;
-    const res = await api.list();
-    const err = res && res.error ? res.error : null;
-    approvals = Array.isArray(res) ? res : [];
-    renderNav();
-    if (current === 'approvals') {
-      document.getElementById('view').innerHTML = window.UI.approvals(approvals, err);
-    }
-  }
-
   // Incrementally reconcile the feed: prepend only genuinely-new entries so
   // existing rows aren't recreated (no whole-list flash on idle refreshes).
   function updateFeed(fl) {
@@ -791,40 +614,26 @@
 
   // ---- live updates ---------------------------------------------------------
   function onData() {
-    if (current === 'studio') {
-      const fl = document.getElementById('feedList');
-      if (fl) updateFeed(fl);
-    } else if (current === 'logs') {
-      render();
-    }
+    const fl = document.getElementById('drawerFeed');
+    if (fl) updateFeed(fl);
   }
+
 
   // ---- interactions ---------------------------------------------------------
   document.addEventListener('click', (e) => {
     const tab = e.target.closest('[data-tab]');
     if (tab) { current = tab.dataset.tab; render(); return; }
-
-    const act = e.target.closest('[data-act]');
-    if (act) {
-      const api = window.studio && window.studio.approvals;
-      if (!api) return;
-      const id = act.dataset.id;
-      const decision = act.dataset.act; // 'approve' | 'reject'
-      act.disabled = true;
-      const card = act.closest('[data-approve]');
-      if (card) card.classList.add('resolving');
-      api.resolve(id, decision).then((r) => {
-        if (r && r.error) {
-          act.disabled = false;
-          if (card) card.classList.remove('resolving');
-          alert('Linear error: ' + r.error);
-          return;
-        }
-        refreshApprovals();
-      });
+    if (e.target.closest('#actToggle')) {
+      const d = document.getElementById('drawer');
+      if (d) { d.classList.toggle('open'); const fl = document.getElementById('drawerFeed'); if (fl) updateFeed(fl); }
       return;
     }
+    if (e.target.closest('#drawerClose')) {
+      const d = document.getElementById('drawer');
+      if (d) d.classList.remove('open');
+    }
   });
+
 
   // ---- agent worker feed ----------------------------------------------------
   function setupWorkerFeed() {
@@ -861,7 +670,7 @@
     const kind = classifyLine(line);
     const cur = agentActivity[agent] || { line: '', kind: 'idle' };
     agentActivity[agent] = { line: kind === 'idle' ? cur.line : line, kind: kind || cur.kind };
-    if (current !== 'studio') return;
+    if (current !== 'content') return;
     const node = document.querySelector(`[data-node="${agent}"]`);
     if (!node) return;
     const a = agentActivity[agent];
@@ -880,6 +689,11 @@
     window.studio.agents.list().then(s => { agentStatusCache = s; updateAgentsUI(); });
     window.studio.agents.onStatus(s => { agentStatusCache = s; updateAgentsUI(); });
   }
-  refreshApprovals();
-  setInterval(refreshApprovals, 25000);
+  // Board badge counts (light poll)
+  if (window.studio && window.studio.pipeline) {
+    const tick = () => window.studio.pipeline.counts().then(r => { countsCache = (r && r.counts) || {}; renderNav(); }).catch(() => {});
+    tick();
+    setInterval(tick, 60000);
+  }
+
 })();
