@@ -37,6 +37,24 @@ distractions. The hook's only job: make swiping away feel like losing something.
 - Recycling the exact structure of the last batch — vary pattern, length, and person
   (i/you/POV) across the 3 hooks so they can be A/B compared
 
+## Proven winners (observed on our accounts — keep this section current)
+
+The strongest performing family so far: **numbered + first-person gut journey** —
+a hard count + lived experience + the exact pain or payoff named:
+
+- "5 things i did to heal my gut" (transformation flavor)
+- "5 gut health 'facts' that kept me bloated for a year" (mistake/myth flavor —
+  the inversion is the tension: things you believe are keeping you sick)
+
+Why it works: the number promises a finite, swipeable list; first person makes it
+testimony instead of advice; "heal / bloated" names the exact pain. 
+
+**Exploit/explore rule:** write 1–2 of each batch's hooks from this family — vary
+the number (3–7), the verb (did / quit / stopped believing / wish i knew), and the
+flavor (transformation vs mistake) so it never reads as a repost. Use the remaining
+slot to test a different playbook pattern, and prefer putting the experiment on the
+BENCH hook so the tested patterns keep flowing to the live accounts.
+
 ## Account registers
 
 Accounts have a content profile; write each hook in its target account's register:
