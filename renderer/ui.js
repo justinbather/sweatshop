@@ -106,6 +106,8 @@
   }
 
   // minimal markdown -> HTML for the generated-concept comments
+  const mdImg = (line) => line.replace(/!\[[^\]]*\]\(([^)\s]+)\)/g, (_, url) =>
+    `<img class="md-img" loading="lazy" src="${/^https:\/\/uploads\.linear\.app\//.test(url) ? '/api/asset?url=' + encodeURIComponent(url) : esc(url)}" />`);
   function mdLite(md) {
     const inline = (s) => esc(s)
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -116,6 +118,7 @@
     for (const raw of String(md).split(/\r?\n/)) {
       const line = raw.replace(/\s+$/, '');
       if (!line.trim()) { closeList(); continue; }
+      if (/!\[[^\]]*\]\(/.test(line)) { closeList(); html += mdImg(line); continue; }
       if (/^###\s+/.test(line)) { closeList(); html += `<h4>${inline(line.replace(/^###\s+/, ''))}</h4>`; }
       else if (/^##\s+/.test(line)) { closeList(); html += `<h3>${inline(line.replace(/^##\s+/, ''))}</h3>`; }
       else if (/^#\s+/.test(line)) { closeList(); html += `<h3>${inline(line.replace(/^#\s+/, ''))}</h3>`; }
@@ -370,6 +373,33 @@ Myth-bust — correct a common belief"></textarea></div>
       </form>`;
   }
 
+  function board() {
+    return `
+      <section class="page">
+        <div class="page-head">
+          <span class="eyebrow">the board</span>
+          <h1>Board</h1>
+          <p>Everything on the Linear board, actionable from here — review posts (images inline), regen by comment, move tickets, and create new generation tickets. <span class="es-sub">Linear stays the system of record; you just never have to open it.</span></p>
+        </div>
+        <div class="board-cols" id="boardCols"></div>
+        <div class="card set-card" id="newTicketCard">
+          <h3>➕ New generation ticket</h3>
+          <p class="desc">Lands in Generation Queue — the Generator fans it into concept variations. Attach screenshots of winning posts to adapt them.</p>
+          <div class="fieldrow"><input class="field field-full" id="ntTitle" placeholder="title — e.g. gut health morning routine (adapt reference)" /></div>
+          <div class="fieldrow"><textarea class="field-area" id="ntDetails" placeholder="context, angle requests, constraints…"></textarea></div>
+          <div class="fieldrow nt-row">
+            <label>variations <input type="number" class="field nt-num" id="ntCount" value="3" min="1" max="8" /></label>
+            <label class="nt-check"><input type="checkbox" id="ntGraphic" /> graphic profile</label>
+            <label class="btn sm ref-add">+ screenshots<input type="file" id="ntImages" accept="image/*" multiple hidden /></label>
+            <span class="es-sub" id="ntImgCount"></span>
+            <button type="button" class="btn primary" id="ntCreate">Create ticket</button>
+            <span class="key-status" id="ntStatus"></span>
+          </div>
+        </div>
+        <div id="boardList"><div class="empty-state">Pick a column above.</div></div>
+      </section>`;
+  }
+
   function report() {
     return `
       <section class="page">
@@ -408,5 +438,5 @@ Myth-bust — correct a common belief"></textarea></div>
       </section>`;
   }
 
-  window.UI = { studio, feedItems, feedItem, approvals, agentsPage, logs, settings, brand, cast, report };
+  window.UI = { studio, feedItems, feedItem, approvals, agentsPage, logs, settings, brand, cast, report, board, mdLite };
 })();

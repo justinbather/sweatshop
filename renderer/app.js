@@ -13,7 +13,8 @@
     logs:      ['11111110','00000000','11111100','00000000','11111110','00000000','11110000','00000000'],
     brand:     ['00011000','00011000','00111100','00111100','01111110','01111110','00111100','00000000'],
     settings:  ['00111100','01111110','11100111','11000011','11000011','11100111','01111110','00111100'],
-    report:    ['00000000','00000011','00000011','00011011','00011011','11011011','11011011','00000000']
+    report:    ['00000000','00000011','00000011','00011011','00011011','11011011','11011011','00000000'],
+    board:     ['11101110','11101110','00000000','11101110','11101110','00000000','11101110','11101110']
   };
   function icon(name, size = 16) {
     const g = G[name] || G.studio; const n = g.length; const cell = size / n;
@@ -26,6 +27,7 @@
   const TABS = [
     { id: 'studio',    label: 'Floor' },
     { id: 'report',    label: 'Report' },
+    { id: 'board',     label: 'Board' },
     { id: 'approvals', label: 'Approvals', badge: () => approvals.length, warn: true },
     { id: 'agents',    label: 'Agents' },
     { id: 'brand',     label: 'Brand' },
@@ -108,6 +110,7 @@
     switch (current) {
       case 'studio':    view.innerHTML = window.UI.studio(STATE); mountStudio(); break;
       case 'report':    view.innerHTML = window.UI.report(); mountReport(); break;
+      case 'board':     view.innerHTML = window.UI.board(); mountBoard(); break;
       case 'approvals': view.innerHTML = window.UI.approvals(approvals); refreshApprovals(); break;
       case 'agents':    view.innerHTML = window.UI.agentsPage(STATE); mountAvatars(); mountAgents(); break;
       case 'brand':     view.innerHTML = window.UI.brand(); mountBrand(); break;
@@ -359,6 +362,138 @@
         if (statusEl) { statusEl.textContent = '● saved'; statusEl.classList.add('ok'); }
       });
     }
+  }
+
+  // ---- board: the full Linear surface -----------------------------------------
+  const BOARD_COLS = ['Generation Queue', 'Needs Approval', 'Creation Queue', 'Ready to Post', 'Posting Queue', 'Drafted', 'Published', 'Rejected'];
+  // contextual quick actions per column: [label, targetState]
+  const BOARD_ACTIONS = {
+    'Needs Approval': [['✓ Approve → Creation', 'Creation Queue'], ['✕ Reject', 'Rejected']],
+    'Ready to Post': [['→ Posting Queue', 'Posting Queue'], ['✕ Reject', 'Rejected']],
+    'Rejected': [['↩ Generation Queue', 'Generation Queue']]
+  };
+  let boardCol = 'Ready to Post';
+
+  async function mountBoard() {
+    const api = window.studio && window.studio.board;
+    const cols = document.getElementById('boardCols');
+    const list = document.getElementById('boardList');
+    if (!api || !cols || !list) return;
+    const esc2 = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+    function renderCols(counts) {
+      cols.innerHTML = BOARD_COLS.map(c =>
+        `<button type="button" class="btn sm bd-col ${c === boardCol ? 'active' : ''}" data-col="${esc2(c)}">${esc2(c)}${counts && counts[c] != null ? ` <b>${counts[c]}</b>` : ''}</button>`).join('');
+    }
+    renderCols(null);
+    if (window.studio.pipeline) window.studio.pipeline.counts().then(r => renderCols((r && r.counts) || {}));
+
+    function ticketCard(t) {
+      const quick = (BOARD_ACTIONS[t.state] || []).map(([label, target]) =>
+        `<button type="button" class="btn sm" data-bd-move="${esc2(t.id)}" data-target="${esc2(target)}">${esc2(label)}</button>`).join('');
+      const moveOpts = BOARD_COLS.filter(c => c !== t.state).map(c => `<option value="${esc2(c)}">${esc2(c)}</option>`).join('');
+      const comments = (t.comments || []).map(c =>
+        `<div class="bd-comment">${window.UI.mdLite ? window.UI.mdLite(c.body) : esc2(c.body)}</div>`).join('');
+      return `
+        <div class="card bd-ticket" data-ticket="${esc2(t.id)}">
+          <div class="bd-head" data-bd-toggle="${esc2(t.id)}">
+            <span class="bd-idf">${esc2(t.identifier)}</span>
+            <span class="bd-title">${esc2(t.title)}</span>
+            <span class="bd-when">${new Date(t.updatedAt).toLocaleString()}</span>
+          </div>
+          <div class="bd-body" hidden>
+            <div class="bd-desc">${window.UI.mdLite ? window.UI.mdLite(t.description || '_no description_') : esc2(t.description)}</div>
+            ${comments ? `<div class="bd-comments"><h4>Comments</h4>${comments}</div>` : ''}
+            <div class="bd-actions">
+              ${quick}
+              <select class="field bd-move-sel" data-bd-sel="${esc2(t.id)}"><option value="">move to…</option>${moveOpts}</select>
+              <input class="field bd-comment-in" data-bd-cin="${esc2(t.id)}" placeholder='comment — e.g. "regen 3: fix the typo"' />
+              <button type="button" class="btn sm" data-bd-send="${esc2(t.id)}">Send</button>
+              <a class="es-sub" href="${esc2(t.url)}" target="_blank">open in Linear ↗</a>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    async function loadCol() {
+      list.innerHTML = '<div class="empty-state">Loading…</div>';
+      try {
+        const tickets = await api.list([boardCol]);
+        list.innerHTML = tickets.length ? tickets.map(ticketCard).join('') : `<div class="empty-state">Nothing in ${esc2(boardCol)}.</div>`;
+      } catch (e) { list.innerHTML = `<div class="empty-state">⚠ ${esc2(e.message || e)}</div>`; }
+    }
+    await loadCol();
+
+    cols.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-col]');
+      if (!b) return;
+      boardCol = b.dataset.col;
+      cols.querySelectorAll('.bd-col').forEach(x => x.classList.toggle('active', x === b));
+      loadCol();
+    });
+
+    list.addEventListener('click', async (e) => {
+      const tog = e.target.closest('[data-bd-toggle]');
+      if (tog) { const body = tog.parentElement.querySelector('.bd-body'); if (body) body.hidden = !body.hidden; return; }
+      const mv = e.target.closest('[data-bd-move]');
+      if (mv) {
+        mv.disabled = true;
+        try { await api.move(mv.dataset.bdMove, mv.dataset.target); await loadCol(); }
+        catch (err) { alert(err.message || err); mv.disabled = false; }
+        return;
+      }
+      const send = e.target.closest('[data-bd-send]');
+      if (send) {
+        const input = list.querySelector(`[data-bd-cin="${CSS.escape(send.dataset.bdSend)}"]`);
+        const body = input && input.value.trim();
+        if (!body) return;
+        send.disabled = true;
+        try { await api.comment(send.dataset.bdSend, body); input.value = ''; send.textContent = '✓ sent'; setTimeout(() => { send.textContent = 'Send'; send.disabled = false; }, 1500); }
+        catch (err) { alert(err.message || err); send.disabled = false; }
+        return;
+      }
+    });
+    list.addEventListener('change', async (e) => {
+      const sel = e.target.closest('[data-bd-sel]');
+      if (sel && sel.value) {
+        const target = sel.value; sel.disabled = true;
+        try { await api.move(sel.dataset.bdSel, target); await loadCol(); }
+        catch (err) { alert(err.message || err); sel.disabled = false; sel.value = ''; }
+      }
+    });
+
+    // new-ticket form
+    let ntImages = [];
+    const imgInput = document.getElementById('ntImages');
+    if (imgInput) imgInput.onchange = async () => {
+      for (const f of imgInput.files) {
+        const dataUrl = await new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(f); });
+        ntImages.push(dataUrl);
+      }
+      imgInput.value = '';
+      document.getElementById('ntImgCount').textContent = `${ntImages.length} image(s)`;
+    };
+    const createBtn = document.getElementById('ntCreate');
+    if (createBtn) createBtn.addEventListener('click', async () => {
+      const title = document.getElementById('ntTitle').value.trim();
+      const status = document.getElementById('ntStatus');
+      if (!title) { status.textContent = 'title required'; return; }
+      createBtn.disabled = true; status.textContent = 'creating…';
+      try {
+        const t = await api.create({
+          title,
+          details: document.getElementById('ntDetails').value.trim(),
+          count: Number(document.getElementById('ntCount').value) || 3,
+          graphic: document.getElementById('ntGraphic').checked,
+          images: ntImages
+        });
+        status.textContent = `● created ${t.identifier}`; status.classList.add('ok');
+        document.getElementById('ntTitle').value = ''; document.getElementById('ntDetails').value = '';
+        ntImages = []; document.getElementById('ntImgCount').textContent = '';
+        if (boardCol === 'Generation Queue') loadCol();
+      } catch (err) { status.textContent = '⚠ ' + (err.message || err); }
+      createBtn.disabled = false;
+    });
   }
 
   // ---- report: daily growth report -------------------------------------------

@@ -90,3 +90,82 @@ export async function resolveApproval(issueId: string, decision: "approve" | "re
     id: issueId, state: sid,
   });
 }
+
+// ---- board surface (so the dashboard fully replaces opening Linear) ---------------
+
+let cachedTeamId: string | null = null;
+async function teamId(): Promise<string> {
+  if (!cachedTeamId) {
+    const d = await gql(`query($team: String!) { teams(filter: { key: { eq: $team } }) { nodes { id } } }`, { team: TEAM });
+    cachedTeamId = d?.teams?.nodes?.[0]?.id;
+    if (!cachedTeamId) throw new Error(`team ${TEAM} not found`);
+  }
+  return cachedTeamId;
+}
+
+export async function listTickets(states: string[]) {
+  const d = await gql(
+    `query($team: String!, $states: [String!]!) {
+      issues(first: 50, orderBy: updatedAt,
+             filter: { team: { key: { eq: $team } }, state: { name: { in: $states } } }) {
+        nodes { id identifier title url updatedAt description state { name }
+                comments { nodes { body createdAt } } } } }`,
+    { team: TEAM, states },
+  );
+  return (d?.issues?.nodes || []).map((n: any) => ({
+    id: n.id, identifier: n.identifier, title: n.title, url: n.url,
+    updatedAt: n.updatedAt, state: n.state?.name || "", description: n.description || "",
+    comments: [...(n.comments?.nodes || [])]
+      .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      .slice(-4)
+      .map((c: any) => ({ body: c.body, createdAt: c.createdAt })),
+  }));
+}
+
+export async function createTicket(title: string, description: string, stateName: string) {
+  const [tid, sid] = await Promise.all([teamId(), stateId(stateName)]);
+  const d = await gql(
+    `mutation($input: IssueCreateInput!) { issueCreate(input: $input) { issue { id identifier url } } }`,
+    { input: { teamId: tid, title, description, stateId: sid } },
+  );
+  const issue = d?.issueCreate?.issue;
+  if (!issue) throw new Error("issueCreate failed");
+  return issue as { id: string; identifier: string; url: string };
+}
+
+export async function moveIssueById(id: string, stateName: string): Promise<void> {
+  const sid = await stateId(stateName);
+  await gql(`mutation($id: String!, $state: String!) { issueUpdate(id: $id, input: { stateId: $state }) { success } }`, { id, state: sid });
+}
+
+export async function commentIssueById(id: string, body: string): Promise<void> {
+  await gql(`mutation($id: String!, $body: String!) { commentCreate(input: { issueId: $id, body: $body }) { success } }`, { id, body });
+}
+
+/** Upload bytes into Linear's file storage; returns the permanent asset URL. */
+export async function uploadToLinear(filename: string, contentType: string, data: Buffer): Promise<string> {
+  const d = await gql(
+    `mutation($contentType: String!, $filename: String!, $size: Int!) {
+      fileUpload(contentType: $contentType, filename: $filename, size: $size) {
+        success uploadFile { uploadUrl assetUrl headers { key value } } } }`,
+    { contentType, filename, size: data.length },
+  );
+  const uf = d?.fileUpload?.uploadFile;
+  if (!uf) throw new Error("fileUpload failed");
+  const headers: Record<string, string> = { "Content-Type": contentType, "Cache-Control": "public, max-age=31536000" };
+  for (const h of uf.headers || []) headers[h.key] = h.value;
+  const res = await fetch(uf.uploadUrl, { method: "PUT", headers, body: new Uint8Array(data) });
+  if (!res.ok) throw new Error(`asset PUT failed: ${res.status}`);
+  return uf.assetUrl;
+}
+
+/** Fetch a Linear-hosted asset with auth (browser <img> tags can't send the key). */
+export async function fetchLinearAsset(url: string): Promise<{ contentType: string; data: Buffer }> {
+  const u = new URL(url);
+  if (u.hostname !== "uploads.linear.app") throw new Error("only uploads.linear.app assets are proxied");
+  const key = await linearKey();
+  let res = await fetch(url, { headers: key ? { Authorization: key } : {} });
+  if (!res.ok) res = await fetch(url); // signed URLs work unauthenticated
+  if (!res.ok) throw new Error(`asset fetch → ${res.status}`);
+  return { contentType: res.headers.get("content-type") || "image/png", data: Buffer.from(await res.arrayBuffer()) };
+}

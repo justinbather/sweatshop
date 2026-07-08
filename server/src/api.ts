@@ -2,7 +2,7 @@ import { Router, json } from "express";
 import { pool, getConfigValue, setConfigValue } from "./db.js";
 import { listRefs, addRef, removeRef, mimeFor } from "../../agents/generator/src/assets.js";
 import { agentStatus, setEnabled, runOnce } from "./workers.js";
-import { pipelineCounts, listApprovals, resolveApproval } from "./linear.js";
+import { pipelineCounts, listApprovals, resolveApproval, listTickets, createTicket, moveIssueById, commentIssueById, uploadToLinear, fetchLinearAsset } from "./linear.js";
 import { buildReport, collectAll } from "./report.js";
 
 /**
@@ -135,6 +135,42 @@ api.get("/approvals", wrap(async () => {
 api.post("/approvals/:id/resolve", wrap(async (req) => {
   await resolveApproval(req.params.id, req.body?.decision === "approve" ? "approve" : "reject");
 }));
+
+// ---- board (browse/act on Linear tickets without opening Linear) -------------------
+api.get("/board", wrap(async (req) => {
+  const states = String(req.query.states || "").split(",").map((s: string) => s.trim()).filter(Boolean);
+  if (!states.length) throw new Error("states query param required");
+  return listTickets(states);
+}));
+api.post("/board/create", wrap(async (req) => {
+  const { title, details, count, graphic, images } = req.body || {};
+  if (!title) throw new Error("title required");
+  const lines: string[] = [];
+  if (graphic) lines.push("Profile: graphic");
+  lines.push(`Variations to create: ${Math.max(1, Math.min(8, Number(count) || 3))}`, "");
+  if (details) lines.push(String(details), "");
+  for (const dataUrl of (Array.isArray(images) ? images : []).slice(0, 8)) {
+    const m = /^data:(image\/[a-z+]+);base64,(.+)$/i.exec(String(dataUrl));
+    if (!m) continue;
+    const url = await uploadToLinear(`ref-${Date.now()}.${IMG_EXT[m[1].toLowerCase()] || "png"}`, m[1], Buffer.from(m[2], "base64"));
+    lines.push(`![reference](${url})`);
+  }
+  return createTicket(String(title), lines.join("\n"), "Generation Queue");
+}));
+api.post("/board/:id/move", wrap(async (req) => {
+  if (!req.body?.state) throw new Error("state required");
+  await moveIssueById(req.params.id, String(req.body.state));
+}));
+api.post("/board/:id/comment", wrap(async (req) => {
+  if (!req.body?.body) throw new Error("body required");
+  await commentIssueById(req.params.id, String(req.body.body));
+}));
+// authenticated image proxy: Linear-hosted assets need the API key to fetch
+api.get("/asset", (req: any, res: any) => {
+  fetchLinearAsset(String(req.query.url || ""))
+    .then(({ contentType, data }) => { res.set("Content-Type", contentType).set("Cache-Control", "private, max-age=3600").send(data); })
+    .catch((e) => res.status(400).json({ error: e instanceof Error ? e.message : String(e) }));
+});
 
 // ---- daily growth report -----------------------------------------------------------
 api.get("/report", wrap(async () => buildReport()));

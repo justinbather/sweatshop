@@ -486,3 +486,27 @@ body {
 .rep-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
 .rep-tab.active { background: var(--panel-3); border-color: var(--violet, #8b7bf0); color: var(--text); }
 .rep-table a { color: var(--research, #4fc3e8); text-decoration: none; }
+
+/* ---- Board tab ------------------------------------------------------------------ */
+.board-cols { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.bd-col.active { background: var(--panel-3); border-color: var(--violet, #8b7bf0); color: var(--text); }
+.bd-col b { color: var(--violet, #8b7bf0); }
+#newTicketCard { margin-bottom: 16px; padding: 14px 16px; }
+.nt-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.nt-row label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+.nt-num { min-width: 0; width: 64px; }
+.bd-ticket { margin-bottom: 10px; }
+.bd-head { display: flex; align-items: center; gap: 10px; padding: 11px 14px; cursor: pointer; }
+.bd-head:hover { background: var(--panel-2); }
+.bd-idf { font-family: var(--mono); font-size: 11px; color: var(--violet, #8b7bf0); flex: none; }
+.bd-title { font-size: 13px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bd-when { font-family: var(--mono); font-size: 10px; color: var(--text-faint); flex: none; }
+.bd-body { padding: 0 14px 13px; border-top: 1px solid var(--line-soft); }
+.bd-desc { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; padding-top: 10px; }
+.bd-desc h3, .bd-desc h4 { color: var(--text); margin: 10px 0 4px; }
+.md-img { max-width: 180px; max-height: 320px; border-radius: 7px; border: 1px solid var(--line); margin: 4px 6px 4px 0; vertical-align: top; }
+.bd-comments h4 { margin: 12px 0 6px; font-size: 12px; }
+.bd-comment { background: var(--panel-2); border: 1px solid var(--line-soft); border-radius: var(--r-sm); padding: 8px 10px; margin-bottom: 6px; font-size: 12px; color: var(--text-dim); }
+.bd-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.bd-move-sel { min-width: 0; width: 150px; }
+.bd-comment-in { min-width: 0; flex: 1; }
