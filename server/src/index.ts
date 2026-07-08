@@ -34,9 +34,8 @@ async function main() {
     catch (e) { res.status(500).json({ ok: false, error: e instanceof Error ? e.message : String(e) }); }
   });
 
-  // the dashboard: renderer/ verbatim, with the browser bridge injected first
-  const indexHtml = readFileSync(join(RENDERER_DIR, "index.html"), "utf8")
-    .replace('<script src="sprites.js"></script>', '<script src="studio-client.js"></script>\n  <script src="sprites.js"></script>');
+  // the dashboard: index.html loads studio-client.js (the browser bridge) itself
+  const indexHtml = readFileSync(join(RENDERER_DIR, "index.html"), "utf8");
   app.get("/", (_req, res) => res.type("html").send(indexHtml));
   app.use(express.static(WEB_DIR));
   app.use(express.static(RENDERER_DIR));
