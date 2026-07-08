@@ -482,3 +482,7 @@ body {
 .rep-table td { padding: 7px 8px; border-bottom: 1px solid var(--line-soft); color: var(--text-dim); }
 .rep-table td:first-child { font-family: var(--mono); color: var(--text); }
 .rt-hook { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.rep-tabs { display: flex; gap: 8px; margin-bottom: 14px; }
+.rep-tab.active { background: var(--panel-3); border-color: var(--violet, #8b7bf0); color: var(--text); }
+.rep-table a { color: var(--research, #4fc3e8); text-decoration: none; }

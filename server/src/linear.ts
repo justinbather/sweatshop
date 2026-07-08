@@ -61,6 +61,28 @@ export async function listApprovals() {
   });
 }
 
+async function issueIdByTicket(ticket: string): Promise<string> {
+  const num = Number(ticket.split("-")[1]);
+  if (!num) throw new Error(`bad ticket identifier: ${ticket}`);
+  const d = await gql(
+    `query($team: String!, $num: Float!) { issues(filter: { team: { key: { eq: $team } }, number: { eq: $num } }) { nodes { id } } }`,
+    { team: TEAM, num },
+  );
+  const id = d?.issues?.nodes?.[0]?.id;
+  if (!id) throw new Error(`ticket ${ticket} not found`);
+  return id;
+}
+
+export async function moveTicket(ticket: string, stateName: string): Promise<void> {
+  const [id, sid] = await Promise.all([issueIdByTicket(ticket), stateId(stateName)]);
+  await gql(`mutation($id: String!, $state: String!) { issueUpdate(id: $id, input: { stateId: $state }) { success } }`, { id, state: sid });
+}
+
+export async function commentTicket(ticket: string, body: string): Promise<void> {
+  const id = await issueIdByTicket(ticket);
+  await gql(`mutation($id: String!, $body: String!) { commentCreate(input: { issueId: $id, body: $body }) { success } }`, { id, body });
+}
+
 export async function resolveApproval(issueId: string, decision: "approve" | "reject"): Promise<void> {
   const target = decision === "approve" ? "Creation Queue" : "Rejected";
   const sid = await stateId(target);

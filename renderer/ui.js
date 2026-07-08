@@ -69,12 +69,12 @@
             'Generates the 9:16 slides for each concept\u2019s assigned influencer (UGC photos or graphic cards per the account profile), then opens the post ticket.',
             'process the queue once (only when auto-poll is off)', '6 / 2',
             '<span class="pn-sub" id="pipeModel">…</span>')}
-          ${gQueue('q_ready', 'Ready to Post', '7 / 2', { gate: true, label: 'Ready to Post', title: 'You review here — comment \u201cregen N: \u2026\u201d to redo a slide, move the ticket on to approve.' })}
-          ${gQueue('q_posting', 'Posting Queue', '8 / 2', { label: 'Posting Queue' })}
+          ${gQueue('q_posting', 'Posting Queue', '7 / 2', { label: 'Posting Queue' })}
+          ${gQueue('q_ready', 'Ready to Post', '7 / 3', { gate: true, label: 'Ready to Post<br/>(fix-it lane)', title: 'Incomplete sets bounce here. Comment \u201cregen N: \u2026\u201d to redo a slide, then move it back to Posting Queue.' })}
           ${gAgent('poster', 'poster', 'Poster',
-            'Uploads slides + caption to Postiz and schedules into the character\u2019s next open slot (UPLOAD → TikTok inbox, never live).',
-            'process the queue once (only when auto-poll is off)', '9 / 2')}
-          ${gQueue('tiktok', 'Drafted', '10 / 2', { cls: 'done', label: '📱 TikTok inbox', title: 'Delivered to the account\u2019s TikTok inbox at the slot time — finish overlays + publish in the app.' })}
+            'Uploads slides + caption to Postiz and schedules into the character\u2019s next open slot (UPLOAD → TikTok inbox, never live). The tracker auto-moves tickets to Published once Postiz delivers.',
+            'process the queue once (only when auto-poll is off)', '8 / 2')}
+          ${gQueue('tiktok', 'Drafted', '9 / 2', { cls: 'done', label: '📱 TikTok inbox', title: 'Delivered to the account\u2019s TikTok inbox at the slot time — finish + publish in the app. Tickets auto-move to Published when Postiz confirms delivery.' })}
 
           ${gStore('st_store', '2 / 1', '🗄 store',
             '<span class="st-stat" id="storeStats">–</span>',
@@ -82,7 +82,7 @@
           ${gStore('st_cast', '6 / 1', '🎭 Cast',
             '<span class="st-stat" id="castStats">–</span>',
             'Influencers: reference images, design systems, TikTok accounts, timeslots. The Creator reads refs/design; the Poster reads accounts + slots.')}
-          ${gStore('st_outputs', '8 / 1', '🖼 outputs/',
+          ${gStore('st_outputs', '7 / 1', '🖼 outputs/',
             '<span class="st-stat">generated slides</span>',
             'The generated 9:16 slides. Creator writes, Poster uploads to Postiz.')}
         </div>
@@ -377,6 +377,11 @@ Myth-bust — correct a common belief"></textarea></div>
           <span class="eyebrow">growth</span>
           <h1>Report</h1>
           <p>Business metrics (RevenueCat), channel growth (Postiz), and content activity — collected daily, computed live. <span class="es-sub" id="repMeta"></span></p>
+        </div>
+        <div class="rep-tabs" id="repTabs">
+          <button type="button" class="btn sm rep-tab active" data-rep="business">💰 Business</button>
+          <button type="button" class="btn sm rep-tab" data-rep="channels">📈 Channels</button>
+          <button type="button" class="btn sm rep-tab" data-rep="content">📮 Content</button>
         </div>
         <div id="reportRoot"><div class="empty-state">Loading…</div></div>
         <div class="cast-actions">

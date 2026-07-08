@@ -13,9 +13,9 @@ import type { Concept, ConceptStash } from "./schema";
 /**
  * Creator agent. Watches Creation Queue (approved variations), reads each
  * concept, generates its slideshow images via Google's Nano Banana Pro
- * (Gemini image model), and drops a post ticket per influencer in Ready to Post.
+ * (Gemini image model), and drops a post ticket per influencer in Posting Queue.
  *
- *   Creation Queue ──claim──► Creating ──generate──► Ready to Post ──(you approve)──► Posting Queue (→ Poster)
+ *   Creation Queue ──claim──► Creating ──generate──► Posting Queue (→ Poster → TikTok inbox = your gate)
  *
  * AUTH: a single `GEMINI_API_KEY` (aistudio.google.com), stored in the app's Keys
  * panel. Character consistency comes from the reference images the user uploads on
@@ -31,8 +31,9 @@ import type { Concept, ConceptStash } from "./schema";
 const STATES = {
   queue: "Creation Queue",
   working: "Creating",
-  post: "Ready to Post", // post tickets land here for you to review/approve → Posting Queue
-  done: "Generated",     // the original variation ends here once its post ticket(s) exist
+  post: "Posting Queue",   // post tickets go straight to the Poster (TikTok inbox = the review gate)
+  review: "Ready to Post", // fix-it lane: incomplete sets bounce here; regen-by-comment watches it
+  done: "Generated",       // the original variation ends here once its post ticket(s) exist
 };
 
 const GEMINI_MODEL = "gemini-3-pro-image"; // Nano Banana Pro
@@ -443,8 +444,8 @@ async function processQueue(board: Board): Promise<void> {
         console.log(`  ✓ ${inf.name}: ${hasKey ? `${ok}/${slides.length} generated` : "plan"} → post ${post.identifier}`);
         const complete = ok === slides.length;
         notify(complete ? "success" : "warn",
-          `📮 Ready for approval — ${post.identifier} [${inf.name}] (${ok}/${slides.length} images)`, {
-          url: post.url, detail: `${concept.angle}${complete ? "" : " — ⚠️ incomplete set: regen the missing slide(s) before approving"}`,
+          `📮 Post created — ${post.identifier} [${inf.name}] (${ok}/${slides.length} images) → Posting Queue`, {
+          url: post.url, detail: `${concept.angle}${complete ? "" : " — ⚠️ incomplete set: the Poster will bounce it to Ready to Post for regen"}`,
         });
       }
 
@@ -475,7 +476,7 @@ async function genOneSlide(provider: Provider, refs: RefImage[], prompt: string,
 const REGEN_RE = /regen(?:erate)?\s+(?:slide\s+)?(\d+)\s*[:\-]?\s*([\s\S]*)/i;
 
 async function processRegens(board: Board): Promise<void> {
-  const tickets = await board.queue(STATES.post);
+  const tickets = await board.queue(STATES.review);
   if (!tickets.length) return;
   const provider = await imageProvider();
   const style = (await loadProductBrief())?.visual || "";
@@ -557,7 +558,7 @@ async function main() {
   if (has("once")) { await processQueue(board); await processRegens(board); return; }
 
   const interval = Number(flag("interval") ?? 30) * 1000;
-  console.log(`Polling ${STATES.queue} + regen requests in ${STATES.post} every ${interval / 1000}s… (Ctrl-C to stop)`);
+  console.log(`Polling ${STATES.queue} + regen requests in ${STATES.review} every ${interval / 1000}s… (Ctrl-C to stop)`);
   for (;;) {
     await processQueue(board).catch((e) => console.error("poll error:", e.message));
     await processRegens(board).catch((e) => console.error("regen poll error:", e.message));

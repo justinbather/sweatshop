@@ -130,8 +130,9 @@
     { f: 'generator', t: 'bench', label: 'bench', dash: true },
     { f: 'bench', t: 'q_creation', label: 'you approve', dash: true },
     { f: 'q_creation', t: 'creator' },
-    { f: 'creator', t: 'q_ready', label: 'post tickets' },
-    { f: 'q_ready', t: 'q_posting', label: 'you approve' },
+    { f: 'creator', t: 'q_posting', label: 'post tickets' },
+    { f: 'poster', t: 'q_ready', label: 'incomplete set', dash: true },
+    { f: 'q_ready', t: 'q_posting', label: 'regen → re-approve', dash: true },
     { f: 'q_posting', t: 'poster' },
     { f: 'poster', t: 'tiktok', label: 'slot time' },
     { f: 'st_store', t: 'strategist', label: 'hooks + perf', dash: true, dim: true },
@@ -370,6 +371,7 @@
     const v = Math.round(d * 100) / 100;
     return `<span class="delta ${v > 0 ? 'up' : v < 0 ? 'down' : 'none'}">${v > 0 ? '+' : ''}${v}${suffix || ''}</span>`;
   }
+  let repSection = 'business';
   function renderReport(r) {
     const esc2 = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const biz = r.business.length ? r.business.map(m => `
@@ -382,14 +384,15 @@
     const chans = r.channels.length ? `<table class="rep-table"><tr><th>channel metric</th><th>value</th><th>Δ 7d</th></tr>` +
       r.channels.map(c => `<tr><td>${esc2(c.label)}</td><td>${esc2(c.value)}</td><td>${deltaHtml(c.d7 == null ? c.d1 : c.d7)}</td></tr>`).join('') + '</table>'
       : '<div class="empty-state">No channel metrics yet — they collect with each report run (needs the Postiz key).</div>';
-    const posts = r.content.recentPosts.length ? `<table class="rep-table"><tr><th>ticket</th><th>account</th><th>hook</th><th>scheduled</th></tr>` +
-      r.content.recentPosts.map(p => `<tr><td>${esc2(p.ticket)}</td><td>${esc2(p.account)}</td><td class="rt-hook">${esc2((p.hook || '').slice(0, 60))}</td><td>${p.scheduledAt ? new Date(p.scheduledAt).toLocaleString() : '–'}</td></tr>`).join('') + '</table>'
+    const stIcon = (s) => s === 'published' ? '🚀' : s === 'error' ? '⚠️' : '⏳';
+    const posts = r.content.recentPosts.length ? `<table class="rep-table"><tr><th>ticket</th><th>account</th><th>hook</th><th>scheduled</th><th>status</th></tr>` +
+      r.content.recentPosts.map(p => `<tr><td>${esc2(p.ticket)}</td><td>${esc2(p.account)}</td><td class="rt-hook">${esc2((p.hook || '').slice(0, 60))}</td><td>${p.scheduledAt ? new Date(p.scheduledAt).toLocaleString() : '–'}</td><td>${p.releaseUrl ? `<a href="${esc2(p.releaseUrl)}" target="_blank">${stIcon(p.status)} ${esc2(p.status)}</a>` : `${stIcon(p.status)} ${esc2(p.status)}`}</td></tr>`).join('') + '</table>'
       : '<div class="empty-state">No posts recorded yet.</div>';
+    if (repSection === 'business') return `<div class="rep-grid">${biz}</div>`;
+    if (repSection === 'channels') return `<div class="card set-card rep-section"><h3>Channels</h3>${chans}</div>`;
     return `
-      <div class="rep-grid">${biz}</div>
-      <div class="card set-card rep-section"><h3>Channels</h3>${chans}</div>
       <div class="card set-card rep-section"><h3>Content — last 7 days</h3>
-        <p class="desc">${r.content.posts7d} post(s) scheduled · ${r.content.hooks7d} hook(s) written${r.content.byAccount.length ? ' — ' + r.content.byAccount.map(a => `${esc2(a.name)}: ${a.posts}`).join(' · ') : ''}</p>
+        <p class="desc">${r.content.posts7d} scheduled · ${r.content.published7d ?? 0} published · ${r.content.hooks7d} hook(s) written${r.content.byAccount.length ? ' — ' + r.content.byAccount.map(a => `${esc2(a.name)}: ${a.posts}`).join(' · ') : ''}</p>
         ${posts}
         <p class="desc">Per-post views/likes aren't available yet (channel-level only) — “what's working” sharpens once the attribution survey ships (docs/ATTRIBUTION.md).</p>
       </div>`;
@@ -400,12 +403,23 @@
     if (!api || !root) return;
     const meta = document.getElementById('repMeta');
     const status = document.getElementById('repStatus');
+    let cached = null;
+    repSection = 'business'; // markup marks Business active on mount
     async function load(r) {
       if (!r) r = await api.get();
+      cached = r;
       root.innerHTML = renderReport(r);
       if (meta) meta.textContent = `Last collected: ${r.meta.lastCollected ? new Date(r.meta.lastCollected).toLocaleString() : 'never'} · daily at ${r.meta.reportTime}`;
     }
     await load();
+    const tabs = document.getElementById('repTabs');
+    if (tabs) tabs.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-rep]');
+      if (!t || !cached) return;
+      repSection = t.dataset.rep;
+      tabs.querySelectorAll('.rep-tab').forEach(b => b.classList.toggle('active', b === t));
+      root.innerHTML = renderReport(cached);
+    });
     const btn = document.getElementById('repCollect');
     if (btn) btn.addEventListener('click', async () => {
       btn.disabled = true; status.textContent = 'collecting…';

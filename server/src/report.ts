@@ -82,17 +82,18 @@ function series(rows: { label: string; value: number; date: string }[]): Map<str
 }
 
 export async function buildReport() {
-  const [app, chan, posts7, byAccount, hooks7, recent, lastCollected, cfg] = await Promise.all([
+  const [app, chan, posts7, published7, byAccount, hooks7, recent, lastCollected, cfg] = await Promise.all([
     pool.query("SELECT label, value::float AS value, date::text AS date FROM app_metrics ORDER BY date"),
     pool.query(`SELECT i.name || ' · ' || m.label AS label, m.value::float AS value, m.date::text AS date
                 FROM account_metrics m JOIN influencers i ON i.id = m.influencer_id ORDER BY m.date`),
     pool.query("SELECT count(*)::int AS n FROM posts WHERE created_at > now() - interval '7 days'"),
+    pool.query("SELECT count(*)::int AS n FROM posts WHERE status = 'published' AND posted_at > now() - interval '7 days'"),
     pool.query(`SELECT coalesce(i.name, p.influencer_id) AS name, count(*)::int AS n, max(p.scheduled_at) AS last
                 FROM posts p LEFT JOIN influencers i ON i.id = p.influencer_id
                 WHERE p.created_at > now() - interval '7 days' GROUP BY 1 ORDER BY n DESC`),
     pool.query("SELECT count(*)::int AS n FROM hooks WHERE created_at > now() - interval '7 days'"),
     pool.query(`SELECT p.ticket, coalesce(i.name, p.influencer_id) AS account, h.text AS hook,
-                       p.scheduled_at, p.created_at
+                       p.scheduled_at, p.created_at, p.status, p.release_url
                 FROM posts p LEFT JOIN influencers i ON i.id = p.influencer_id
                 LEFT JOIN hooks h ON h.id = p.hook_id ORDER BY p.created_at DESC LIMIT 8`),
     getConfigValue<string>("state:lastCollected"),
@@ -103,10 +104,12 @@ export async function buildReport() {
     channels: [...series(chan.rows).values()],
     content: {
       posts7d: posts7.rows[0].n,
+      published7d: published7.rows[0].n,
       hooks7d: hooks7.rows[0].n,
       byAccount: byAccount.rows.map((r) => ({ name: r.name, posts: r.n, last: r.last })),
       recentPosts: recent.rows.map((r) => ({
         ticket: r.ticket, account: r.account, hook: r.hook || "", scheduledAt: r.scheduled_at,
+        status: r.status || "scheduled", releaseUrl: r.release_url || null,
       })),
     },
     meta: {
