@@ -384,7 +384,7 @@
     const chans = r.channels.length ? `<table class="rep-table"><tr><th>channel metric</th><th>value</th><th>Δ 7d</th></tr>` +
       r.channels.map(c => `<tr><td>${esc2(c.label)}</td><td>${esc2(c.value)}</td><td>${deltaHtml(c.d7 == null ? c.d1 : c.d7)}</td></tr>`).join('') + '</table>'
       : '<div class="empty-state">No channel metrics yet — they collect with each report run (needs the Postiz key).</div>';
-    const stIcon = (s) => s === 'published' ? '🚀' : s === 'error' ? '⚠️' : '⏳';
+    const stIcon = (s) => s === 'published' ? '🚀' : s === 'delivered' ? '📬' : s === 'error' ? '⚠️' : '⏳';
     const posts = r.content.recentPosts.length ? `<table class="rep-table"><tr><th>ticket</th><th>account</th><th>hook</th><th>scheduled</th><th>status</th></tr>` +
       r.content.recentPosts.map(p => `<tr><td>${esc2(p.ticket)}</td><td>${esc2(p.account)}</td><td class="rt-hook">${esc2((p.hook || '').slice(0, 60))}</td><td>${p.scheduledAt ? new Date(p.scheduledAt).toLocaleString() : '–'}</td><td>${p.releaseUrl ? `<a href="${esc2(p.releaseUrl)}" target="_blank">${stIcon(p.status)} ${esc2(p.status)}</a>` : `${stIcon(p.status)} ${esc2(p.status)}`}</td></tr>`).join('') + '</table>'
       : '<div class="empty-state">No posts recorded yet.</div>';
