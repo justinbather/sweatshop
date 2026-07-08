@@ -4,6 +4,7 @@ import { readFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { migrate } from "./migrate.js";
 import { mountAuth, requireAuth } from "./auth.js";
+import { startReportClock } from "./report.js";
 import { api } from "./api.js";
 import { attachHub } from "./hub.js";
 import { startEnabledAgents, shutdown } from "./workers.js";
@@ -44,6 +45,7 @@ async function main() {
   server.listen(PORT, () => console.log(`sweatshop server → http://localhost:${PORT}`));
 
   await startEnabledAgents();
+  startReportClock(); // daily collect + Discord digest (config.reportTime)
 
   process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);

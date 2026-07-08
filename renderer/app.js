@@ -12,7 +12,8 @@
     agents:    ['00110011','01111111','00110011','00000000','01100110','11111111','01100110','00000000'],
     logs:      ['11111110','00000000','11111100','00000000','11111110','00000000','11110000','00000000'],
     brand:     ['00011000','00011000','00111100','00111100','01111110','01111110','00111100','00000000'],
-    settings:  ['00111100','01111110','11100111','11000011','11000011','11100111','01111110','00111100']
+    settings:  ['00111100','01111110','11100111','11000011','11000011','11100111','01111110','00111100'],
+    report:    ['00000000','00000011','00000011','00011011','00011011','11011011','11011011','00000000']
   };
   function icon(name, size = 16) {
     const g = G[name] || G.studio; const n = g.length; const cell = size / n;
@@ -24,6 +25,7 @@
 
   const TABS = [
     { id: 'studio',    label: 'Floor' },
+    { id: 'report',    label: 'Report' },
     { id: 'approvals', label: 'Approvals', badge: () => approvals.length, warn: true },
     { id: 'agents',    label: 'Agents' },
     { id: 'brand',     label: 'Brand' },
@@ -105,6 +107,7 @@
     const view = document.getElementById('view');
     switch (current) {
       case 'studio':    view.innerHTML = window.UI.studio(STATE); mountStudio(); break;
+      case 'report':    view.innerHTML = window.UI.report(); mountReport(); break;
       case 'approvals': view.innerHTML = window.UI.approvals(approvals); refreshApprovals(); break;
       case 'agents':    view.innerHTML = window.UI.agentsPage(STATE); mountAvatars(); mountAgents(); break;
       case 'brand':     view.innerHTML = window.UI.brand(); mountBrand(); break;
@@ -328,6 +331,19 @@
       renderTimes();
     }
 
+    // daily report time (non-secret config)
+    const cfgR = window.studio && window.studio.config;
+    const repTime = document.querySelector('[data-config-time="reportTime"]');
+    if (cfgR && repTime) {
+      const st = document.querySelector('[data-config-status="reportTime"]');
+      cfgR.get().then(c => { if (c.reportTime) repTime.value = c.reportTime; if (st) st.textContent = '● saved'; });
+      repTime.addEventListener('change', async () => {
+        if (st) st.textContent = 'saving…';
+        await cfgR.set({ reportTime: repTime.value });
+        if (st) { st.textContent = '● saved'; st.classList.add('ok'); }
+      });
+    }
+
     // image-model toggle (non-secret config)
     const cfg = window.studio && window.studio.config;
     const modelSel = document.querySelector('[data-config="imageModel"]');
@@ -342,6 +358,64 @@
         if (statusEl) { statusEl.textContent = '● saved'; statusEl.classList.add('ok'); }
       });
     }
+  }
+
+  // ---- report: daily growth report -------------------------------------------
+  const RC_NAMES = {
+    rc_mrr: 'MRR', rc_active_trials: 'Active trials', rc_active_subscriptions: 'Active subs',
+    rc_new_customers: 'New customers', rc_revenue: 'Revenue (28d)', rc_active_users: 'Active users'
+  };
+  function deltaHtml(d, suffix) {
+    if (d == null) return '<span class="delta none">–</span>';
+    const v = Math.round(d * 100) / 100;
+    return `<span class="delta ${v > 0 ? 'up' : v < 0 ? 'down' : 'none'}">${v > 0 ? '+' : ''}${v}${suffix || ''}</span>`;
+  }
+  function renderReport(r) {
+    const esc2 = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const biz = r.business.length ? r.business.map(m => `
+      <div class="rep-card">
+        <span class="rc-label">${esc2(RC_NAMES[m.label] || m.label.replace(/^rc_/, ''))}</span>
+        <span class="rc-value">${esc2(m.value)}</span>
+        <span class="rc-deltas">${deltaHtml(m.d1)} today · ${deltaHtml(m.d7)} 7d</span>
+      </div>`).join('') :
+      `<div class="empty-state">No business metrics yet${r.meta.revenuecatConfigured ? ' — hit Collect now' : ' — add the RevenueCat key + project id in Settings, then Collect now'}.</div>`;
+    const chans = r.channels.length ? `<table class="rep-table"><tr><th>channel metric</th><th>value</th><th>Δ 7d</th></tr>` +
+      r.channels.map(c => `<tr><td>${esc2(c.label)}</td><td>${esc2(c.value)}</td><td>${deltaHtml(c.d7 == null ? c.d1 : c.d7)}</td></tr>`).join('') + '</table>'
+      : '<div class="empty-state">No channel metrics yet — they collect with each report run (needs the Postiz key).</div>';
+    const posts = r.content.recentPosts.length ? `<table class="rep-table"><tr><th>ticket</th><th>account</th><th>hook</th><th>scheduled</th></tr>` +
+      r.content.recentPosts.map(p => `<tr><td>${esc2(p.ticket)}</td><td>${esc2(p.account)}</td><td class="rt-hook">${esc2((p.hook || '').slice(0, 60))}</td><td>${p.scheduledAt ? new Date(p.scheduledAt).toLocaleString() : '–'}</td></tr>`).join('') + '</table>'
+      : '<div class="empty-state">No posts recorded yet.</div>';
+    return `
+      <div class="rep-grid">${biz}</div>
+      <div class="card set-card rep-section"><h3>Channels</h3>${chans}</div>
+      <div class="card set-card rep-section"><h3>Content — last 7 days</h3>
+        <p class="desc">${r.content.posts7d} post(s) scheduled · ${r.content.hooks7d} hook(s) written${r.content.byAccount.length ? ' — ' + r.content.byAccount.map(a => `${esc2(a.name)}: ${a.posts}`).join(' · ') : ''}</p>
+        ${posts}
+        <p class="desc">Per-post views/likes aren't available yet (channel-level only) — “what's working” sharpens once the attribution survey ships (docs/ATTRIBUTION.md).</p>
+      </div>`;
+  }
+  async function mountReport() {
+    const api = window.studio && window.studio.report;
+    const root = document.getElementById('reportRoot');
+    if (!api || !root) return;
+    const meta = document.getElementById('repMeta');
+    const status = document.getElementById('repStatus');
+    async function load(r) {
+      if (!r) r = await api.get();
+      root.innerHTML = renderReport(r);
+      if (meta) meta.textContent = `Last collected: ${r.meta.lastCollected ? new Date(r.meta.lastCollected).toLocaleString() : 'never'} · daily at ${r.meta.reportTime}`;
+    }
+    await load();
+    const btn = document.getElementById('repCollect');
+    if (btn) btn.addEventListener('click', async () => {
+      btn.disabled = true; status.textContent = 'collecting…';
+      try {
+        const res = await api.collect();
+        await load(res.report);
+        status.textContent = '● ' + (res.notes || []).join(' · ');
+      } catch (e) { status.textContent = '⚠ ' + (e.message || e); }
+      btn.disabled = false;
+    });
   }
 
   // ---- brand: load/save the product brief -----------------------------------

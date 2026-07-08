@@ -3,13 +3,14 @@ import { pool, getConfigValue, setConfigValue } from "./db.js";
 import { listRefs, addRef, removeRef, mimeFor } from "../../agents/generator/src/assets.js";
 import { agentStatus, setEnabled, runOnce } from "./workers.js";
 import { pipelineCounts, listApprovals, resolveApproval } from "./linear.js";
+import { buildReport, collectAll } from "./report.js";
 
 /**
  * /api — mirrors the desktop app's `window.studio` bridge 1:1 so the same renderer
  * runs in a browser via web/studio-client.js. State lives in Postgres (app_config +
  * tables); reference images and generated slides live on disk under DATA_DIR.
  */
-const ALLOWED_SECRETS = ["LINEAR_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "POSTIZ_API_KEY", "DISCORD_WEBHOOK_URL"];
+const ALLOWED_SECRETS = ["LINEAR_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "POSTIZ_API_KEY", "DISCORD_WEBHOOK_URL", "REVENUECAT_API_KEY", "REVENUECAT_PROJECT_ID"];
 const mask = (v?: string) => (v ? "••••••••" + String(v).slice(-4) : "");
 const slug = (s: string) => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "influencer";
 const IMG_EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif" };
@@ -133,6 +134,13 @@ api.get("/approvals", wrap(async () => {
 }));
 api.post("/approvals/:id/resolve", wrap(async (req) => {
   await resolveApproval(req.params.id, req.body?.decision === "approve" ? "approve" : "reject");
+}));
+
+// ---- daily growth report -----------------------------------------------------------
+api.get("/report", wrap(async () => buildReport()));
+api.post("/report/collect", wrap(async () => {
+  const notes = await collectAll();
+  return { notes, report: await buildReport() };
 }));
 
 // ---- pipeline overview -------------------------------------------------------------

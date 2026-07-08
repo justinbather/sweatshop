@@ -465,3 +465,20 @@ body {
 /* graphic-account design tokens on the Cast card */
 .design-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .design-grid .field { min-width: 0; width: 100%; }
+
+/* ---- Report tab --------------------------------------------------------------- */
+.rep-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.rep-card { background: var(--panel); border: 1px solid var(--line-soft); border-radius: var(--r); padding: 13px 15px; display: flex; flex-direction: column; gap: 4px; }
+.rc-label { font-family: var(--mono); font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .05em; }
+.rc-value { font-size: 26px; font-weight: 700; line-height: 1.1; }
+.rc-deltas { font-family: var(--mono); font-size: 10px; color: var(--text-faint); }
+.delta.up { color: #6ee7a8; }
+.delta.down { color: var(--red); }
+.delta.none { color: var(--text-faint); }
+.rep-section { margin-bottom: 16px; padding: 14px 16px; }
+.rep-section h3 { margin: 0 0 8px; }
+.rep-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.rep-table th { text-align: left; font-family: var(--mono); font-size: 10px; color: var(--text-faint); text-transform: uppercase; letter-spacing: .04em; padding: 6px 8px; border-bottom: 1px solid var(--line-soft); }
+.rep-table td { padding: 7px 8px; border-bottom: 1px solid var(--line-soft); color: var(--text-dim); }
+.rep-table td:first-child { font-family: var(--mono); color: var(--text); }
+.rt-hook { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -73,6 +73,10 @@
       counts: () => api('/pipeline/counts'),
       stats: () => api('/pipeline/stats')
     },
+    report: {
+      get: () => api('/report'),
+      collect: () => api('/report/collect', {})
+    },
     worker: {
       onLog: (cb) => { logSubs.add(cb); return () => logSubs.delete(cb); }
     }

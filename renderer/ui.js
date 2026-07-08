@@ -268,6 +268,22 @@
             </div>
           </div>
           <div class="set-row">
+            <div class="sr-text">RevenueCat<small>daily report — secret API key (v2) + project id (app.revenuecat.com)</small></div>
+            <div class="key-field">
+              <input class="field" type="password" data-secret="REVENUECAT_API_KEY" placeholder="sk_…" autocomplete="off" spellcheck="false" />
+              <button class="btn sm" data-save-secret="REVENUECAT_API_KEY">Save</button>
+              <span class="key-status" data-status="REVENUECAT_API_KEY">…</span>
+            </div>
+          </div>
+          <div class="set-row">
+            <div class="sr-text">RevenueCat project id<small>Projects → settings → id (proj…)</small></div>
+            <div class="key-field">
+              <input class="field" type="password" data-secret="REVENUECAT_PROJECT_ID" placeholder="proj…" autocomplete="off" spellcheck="false" />
+              <button class="btn sm" data-save-secret="REVENUECAT_PROJECT_ID">Save</button>
+              <span class="key-status" data-status="REVENUECAT_PROJECT_ID">…</span>
+            </div>
+          </div>
+          <div class="set-row">
             <div class="sr-text">Discord webhook<small>alerts — step starts, posts ready for approval, scheduled posts, failures (channel → Integrations → Webhooks)</small></div>
             <div class="key-field">
               <input class="field" type="password" data-secret="DISCORD_WEBHOOK_URL" placeholder="https://discord.com/api/webhooks/…" autocomplete="off" spellcheck="false" />
@@ -282,6 +298,17 @@
           <div class="set-row">
             <div class="sr-text">Run times<small>make sure each character has at least this many daily slots on the Cast tab</small></div>
             <div class="slots" id="autopilotSlots"></div>
+          </div>
+        </div>
+        <div class="card set-card">
+          <h3>Daily report</h3>
+          <p class="desc">Once a day the server collects RevenueCat + channel metrics and posts a digest to Discord. The Report tab always computes live from the collected data.</p>
+          <div class="set-row">
+            <div class="sr-text">Collect + digest at</div>
+            <div class="key-field">
+              <input type="time" class="field" data-config-time="reportTime" value="08:00" />
+              <span class="key-status" data-config-status="reportTime">…</span>
+            </div>
           </div>
         </div>
         <div class="card set-card">
@@ -343,6 +370,22 @@ Myth-bust — correct a common belief"></textarea></div>
       </form>`;
   }
 
+  function report() {
+    return `
+      <section class="page">
+        <div class="page-head">
+          <span class="eyebrow">growth</span>
+          <h1>Report</h1>
+          <p>Business metrics (RevenueCat), channel growth (Postiz), and content activity — collected daily, computed live. <span class="es-sub" id="repMeta"></span></p>
+        </div>
+        <div id="reportRoot"><div class="empty-state">Loading…</div></div>
+        <div class="cast-actions">
+          <button type="button" class="btn" id="repCollect">⟳ Collect now</button>
+          <span class="key-status" id="repStatus"></span>
+        </div>
+      </section>`;
+  }
+
   function cast() {
     return `
       <section class="page">
@@ -360,5 +403,5 @@ Myth-bust — correct a common belief"></textarea></div>
       </section>`;
   }
 
-  window.UI = { studio, feedItems, feedItem, approvals, agentsPage, logs, settings, brand, cast };
+  window.UI = { studio, feedItems, feedItem, approvals, agentsPage, logs, settings, brand, cast, report };
 })();

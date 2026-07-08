@@ -9,7 +9,8 @@ import { Board } from "./linear";
 import { loadSecrets } from "./secrets";
 import { loadProductBrief, productBriefToPrompt } from "./brief";
 import { loadInfluencers, profileOf, type Influencer } from "./influencers";
-import { addHooks, addChannelMetrics, recentHooks, postsForHook, channelTrends, getState, setState } from "./store";
+import { addHooks, recentHooks, postsForHook, channelTrends, getState, setState } from "./store";
+import { pullChannelAnalytics } from "./analytics";
 import { notify } from "./notify";
 
 /**
@@ -32,7 +33,6 @@ import { notify } from "./notify";
  */
 const STATES = { queue: "Generation Queue" };
 const HOOKS_PER_RUN = 3;
-const POSTIZ_BASE = process.env.POSTIZ_API_URL || "https://api.postiz.com/public/v1";
 const SKILL_FILE = join(dirname(fileURLToPath(import.meta.url)), "..", "skills", "tiktok-hooks.md");
 
 function flag(name: string): string | undefined {
@@ -67,31 +67,7 @@ function latestDue(times: string[], now: Date): Date | null {
   return best;
 }
 
-// ---- 1. analytics ------------------------------------------------------------
-
-async function pullAnalytics(influencers: Influencer[]): Promise<string> {
-  const apiKey = process.env.POSTIZ_API_KEY;
-  if (!apiKey) return "no POSTIZ_API_KEY — skipped";
-  let stored = 0;
-  for (const inf of influencers) {
-    if (!inf.postizIntegrationId) continue;
-    try {
-      const res = await fetch(`${POSTIZ_BASE}/analytics/${inf.postizIntegrationId}?date=7`, {
-        headers: { Authorization: apiKey },
-      });
-      if (!res.ok) { console.error(`  analytics ${inf.name}: ${res.status}`); continue; }
-      const series: { label: string; data: { total: string; date: string }[] }[] = await res.json();
-      const samples = (Array.isArray(series) ? series : []).flatMap((s) =>
-        (s.data || []).map((p) => ({ influencerId: inf.id, label: s.label, value: Number(p.total) || 0, date: p.date })),
-      );
-      await addChannelMetrics(samples);
-      stored += samples.length;
-    } catch (e) {
-      console.error(`  analytics ${inf.name}: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
-  return `${stored} sample(s) stored`;
-}
+// ---- 1. analytics (shared with the server's daily report) ---------------------
 
 // ---- 2. hook generation --------------------------------------------------------
 
@@ -208,7 +184,7 @@ async function runOnce(board: Board): Promise<void> {
   console.log(`▶ autopilot run — ${influencers.length} influencer(s)`);
   notify("info", `🧠 Autopilot run started (${influencers.map((i) => i.name).join(", ")})`);
   try {
-    console.log(`  analytics: ${await pullAnalytics(influencers)}`);
+    console.log(`  analytics: ${await pullChannelAnalytics(influencers)}`);
     await createTicket(board, influencers);
   } catch (e) {
     notify("error", "🧠 Autopilot run failed", { detail: e instanceof Error ? e.message : String(e) });
