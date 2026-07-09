@@ -2,7 +2,7 @@ import { Router, json } from "express";
 import { pool, getConfigValue, setConfigValue } from "./db.js";
 import { listRefs, addRef, removeRef, mimeFor } from "../../agents/generator/src/assets.js";
 import { agentStatus, setEnabled, runOnce } from "./workers.js";
-import { pipelineCounts, listApprovals, resolveApproval, listTickets, createTicket, moveIssueById, commentIssueById, uploadToLinear, fetchLinearAsset } from "./linear.js";
+import { pipelineCounts, listApprovals, resolveApproval, listTickets, createTicket, moveIssueById, commentIssueById, uploadToLinear, fetchLinearAsset, moveTicket } from "./linear.js";
 import { buildReport, collectAll } from "./report.js";
 
 /**
@@ -171,6 +171,39 @@ api.get("/asset", (req: any, res: any) => {
     .then(({ contentType, data }) => { res.set("Content-Type", contentType).set("Cache-Control", "private, max-age=3600").send(data); })
     .catch((e) => res.status(400).json({ error: e instanceof Error ? e.message : String(e) }));
 });
+
+// ---- calendar (scheduled posts + mark published) ----------------------------------
+api.get("/calendar", wrap(async (req) => {
+  const start = String(req.query.start || "");
+  const end = String(req.query.end || "");
+  if (!start || !end) throw new Error("start + end query params required (ISO)");
+  const { rows } = await pool.query(
+    `SELECT p.ticket, coalesce(i.name, p.influencer_id) AS account, h.text AS hook,
+            p.scheduled_at, p.posted_at, p.status, p.release_url
+     FROM posts p LEFT JOIN influencers i ON i.id = p.influencer_id
+     LEFT JOIN hooks h ON h.id = p.hook_id
+     WHERE p.scheduled_at >= $1 AND p.scheduled_at < $2
+     ORDER BY p.scheduled_at`,
+    [start, end],
+  );
+  return rows.map((r) => ({
+    ticket: r.ticket, account: r.account, hook: r.hook || "",
+    scheduledAt: r.scheduled_at, postedAt: r.posted_at,
+    status: r.status || "scheduled", releaseUrl: r.release_url || null,
+  }));
+}));
+api.post("/calendar/:ticket/publish", wrap(async (req) => {
+  const ticket = req.params.ticket;
+  const publish = req.body?.published !== false; // default true; false = revert
+  if (publish) {
+    await pool.query("UPDATE posts SET status = 'published', posted_at = coalesce(posted_at, now()) WHERE ticket = $1", [ticket]);
+    await moveTicket(ticket, "Published").catch(() => {}); // ticket may already be there
+  } else {
+    await pool.query("UPDATE posts SET status = 'scheduled', posted_at = NULL WHERE ticket = $1", [ticket]);
+    await moveTicket(ticket, "Drafted").catch(() => {});
+  }
+  return { ok: true, status: publish ? "published" : "scheduled" };
+}));
 
 // ---- daily growth report -----------------------------------------------------------
 api.get("/report", wrap(async () => buildReport()));

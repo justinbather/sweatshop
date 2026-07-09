@@ -10,6 +10,7 @@
     home:    ['00011000','00111100','01111110','11111111','11100111','11100111','11100111','11111111'],
     content: ['11000000','11110000','11111100','11111111','11111100','11110000','11000000','00000000'],
     board:   ['11101110','11101110','00000000','11101110','11101110','00000000','11101110','11101110'],
+    calendar:['11111110','10000010','11111110','10101010','11111110','10101010','11111110','00000000'],
     setup:   ['00111100','01111110','11100111','11000011','11000011','11100111','01111110','00111100']
   };
   function icon(name, size = 16) {
@@ -24,6 +25,7 @@
     { id: 'home',    label: 'Home' },
     { id: 'content', label: 'Content' },
     { id: 'board',   label: 'Board', badge: () => countsCache['Needs Approval'] || 0, warn: true },
+    { id: 'calendar', label: 'Calendar' },
     { id: 'setup',   label: 'Setup' }
   ];
 
@@ -71,6 +73,7 @@
       case 'home':    view.innerHTML = window.UI.home(); mountHome(); break;
       case 'content': view.innerHTML = window.UI.content(); mountContent(); break;
       case 'board':   view.innerHTML = window.UI.board(); mountBoard(); break;
+      case 'calendar': view.innerHTML = window.UI.calendar(); mountCalendar(); break;
       case 'setup':   view.innerHTML = window.UI.setup(); mountSetup('cast'); break;
     }
     renderNav();
@@ -158,6 +161,60 @@
     pipeTimer = setInterval(refreshPipeline, 30000);
   }
 
+
+  // ---- calendar: scheduled posts by day + mark published -----------------------
+  let calRef = new Date(); calRef.setDate(1);
+  async function mountCalendar() {
+    const api = window.studio && window.studio.calendar;
+    const grid = document.getElementById('calGrid');
+    const label = document.getElementById('calMonth');
+    if (!api || !grid) return;
+    const esc2 = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const stClass = (s) => s === 'published' ? 'published' : s === 'delivered' ? 'delivered' : s === 'error' ? 'error' : 'sched';
+
+    async function load() {
+      const first = new Date(calRef.getFullYear(), calRef.getMonth(), 1);
+      const next = new Date(calRef.getFullYear(), calRef.getMonth() + 1, 1);
+      label.textContent = first.toLocaleString(undefined, { month: 'long', year: 'numeric' });
+      // grid covers the weeks spanning the month (Sun-start)
+      const gridStart = new Date(first); gridStart.setDate(1 - first.getDay());
+      const gridEnd = new Date(next); if (gridEnd.getDay() !== 0) gridEnd.setDate(gridEnd.getDate() + (7 - gridEnd.getDay()));
+      let posts = [];
+      try { posts = await api.list(gridStart.toISOString(), gridEnd.toISOString()); } catch (e) { grid.innerHTML = `<div class="empty-state">⚠ ${esc2(e.message || e)}</div>`; return; }
+      const byDay = {};
+      for (const p of posts) { const k = new Date(p.scheduledAt).toDateString(); (byDay[k] = byDay[k] || []).push(p); }
+      const dows = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => `<div class="cal-dow">${d}</div>`).join('');
+      let cells = '';
+      const today = new Date().toDateString();
+      for (let d = new Date(gridStart); d < gridEnd; d.setDate(d.getDate() + 1)) {
+        const key = d.toDateString();
+        const inMonth = d.getMonth() === first.getMonth();
+        const items = (byDay[key] || []).sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt)).map(p => `
+          <div class="cal-post ${stClass(p.status)}" data-ticket="${esc2(p.ticket)}" data-status="${esc2(p.status)}" title="${esc2(p.account)} · ${esc2(p.hook)}">
+            <span class="cp-time">${new Date(p.scheduledAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>
+            <span class="cp-acct">${esc2(p.account)}</span>
+            <span class="cp-tk">${esc2(p.ticket)}</span>
+          </div>`).join('');
+        cells += `<div class="cal-cell ${inMonth ? '' : 'dim'} ${key === today ? 'today' : ''}"><div class="cal-date">${d.getDate()}</div>${items}</div>`;
+      }
+      grid.innerHTML = `<div class="cal-dows">${dows}</div><div class="cal-cells">${cells}</div>`;
+    }
+    await load();
+
+    document.getElementById('calPrev').onclick = () => { calRef.setMonth(calRef.getMonth() - 1); load(); };
+    document.getElementById('calNext').onclick = () => { calRef.setMonth(calRef.getMonth() + 1); load(); };
+    grid.onclick = async (e) => {
+      const post = e.target.closest('.cal-post');
+      if (!post) return;
+      const ticket = post.dataset.ticket;
+      const isPub = post.dataset.status === 'published';
+      const action = isPub ? 'Mark this as NOT published (revert)?' : `Mark ${ticket} as published?`;
+      if (!confirm(action)) return;
+      post.style.opacity = '.5';
+      try { await api.setPublished(ticket, !isPub); await load(); }
+      catch (err) { alert(err.message || err); post.style.opacity = '1'; }
+    };
+  }
 
   // ---- board: the full Linear surface -----------------------------------------
   const BOARD_COLS = ['Generation Queue', 'Needs Approval', 'Revise', 'Creation Queue', 'Ready to Post', 'Posting Queue', 'Drafted', 'Published', 'Generated', 'Rejected'];
@@ -302,50 +359,72 @@
     const v = Math.round(d * 100) / 100;
     return `<span class="delta ${v > 0 ? 'up' : v < 0 ? 'down' : 'none'}">${v > 0 ? '+' : ''}${v}${suffix || ''}</span>`;
   }
-  let repSection = 'business';
-  function renderReport(r) {
-    const esc2 = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    const biz = r.business.length ? r.business.map(m => `
+  const deltas3 = (m) => `<span class="rc-deltas">${deltaHtml(m.d1)} today · ${deltaHtml(m.d7)} 7d · ${deltaHtml(m.d30)} 30d</span>`;
+  const esc2 = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+  function bizCards(business, meta) {
+    return business.length ? business.map(m => `
       <div class="rep-card">
         <span class="rc-label">${esc2(RC_NAMES[m.label] || m.label.replace(/^rc_/, ''))}</span>
         <span class="rc-value">${esc2(m.value)}</span>
-        <span class="rc-deltas">${deltaHtml(m.d1)} today · ${deltaHtml(m.d7)} 7d</span>
-      </div>`).join('') :
-      `<div class="empty-state">No business metrics yet${r.meta.revenuecatConfigured ? ' — hit Collect now' : ' — add the RevenueCat key + project id in Settings, then Collect now'}.</div>`;
-    const chans = r.channels.length ? `<table class="rep-table"><tr><th>channel metric</th><th>value</th><th>Δ 7d</th></tr>` +
-      r.channels.map(c => `<tr><td>${esc2(c.label)}</td><td>${esc2(c.value)}</td><td>${deltaHtml(c.d7 == null ? c.d1 : c.d7)}</td></tr>`).join('') + '</table>'
-      : '<div class="empty-state">No channel metrics yet — they collect with each report run (needs the Postiz key).</div>';
-    const stIcon = (s) => s === 'published' ? '🚀' : s === 'delivered' ? '📬' : s === 'error' ? '⚠️' : '⏳';
+        ${deltas3(m)}
+      </div>`).join('')
+      : `<div class="empty-state">No business metrics yet${meta.revenuecatConfigured ? ' — hit Collect now' : ' — add the RevenueCat key + project id in Setup, then Collect now'}.</div>`;
+  }
+  function infCard(inf) {
+    const f = inf.metrics.find(m => /^Followers$/i.test(m.label));
+    const others = inf.metrics.filter(m => /(Views|Likes|Videos|Comments|Shares)/i.test(m.label)).slice(0, 3);
+    return `
+      <div class="ov-card inf-card">
+        <div class="inf-head"><h3>${esc2(inf.name)}</h3><span class="es-sub">${inf.posts7d} posts · ${inf.published7d} live · 7d</span></div>
+        <div class="inf-follow">
+          <span class="rc-value">${f ? esc2(f.value) : '–'}</span><span class="rc-label">followers</span>
+          ${f ? `<span class="rc-deltas">${deltaHtml(f.d7)} 7d · ${deltaHtml(f.d30)} 30d</span>` : ''}
+        </div>
+        <ul class="ov-list inf-metrics">
+          ${others.map(m => `<li>${esc2(m.label)} <b>${esc2(m.value)}</b> ${deltaHtml(m.d7)} <span class="es-sub">7d</span></li>`).join('') || '<li class="es-sub">metrics collect with each report run</li>'}
+        </ul>
+      </div>`;
+  }
+
+  let repSection = 'overview';
+  function renderReport(r) {
+    if (repSection === 'business') return `<div class="rep-grid">${bizCards(r.business, r.meta)}</div>`;
+    if (repSection === 'channels') {
+      return (r.influencers && r.influencers.length) ? r.influencers.map(inf => `
+        <div class="card set-card rep-section">
+          <h3>${esc2(inf.name)} <span class="es-sub">${inf.posts7d} posts · ${inf.published7d} live · last 7d</span></h3>
+          <table class="rep-table"><tr><th>metric</th><th>value</th><th>today</th><th>7d</th><th>30d</th></tr>
+          ${inf.metrics.map(m => `<tr><td>${esc2(m.label)}</td><td>${esc2(m.value)}</td><td>${deltaHtml(m.d1)}</td><td>${deltaHtml(m.d7)}</td><td>${deltaHtml(m.d30)}</td></tr>`).join('')}
+          </table>
+        </div>`).join('')
+        : '<div class="empty-state">No channel metrics yet — they collect with each report run (needs the Postiz key).</div>';
+    }
+    const stIcon = (st) => st === 'published' ? '🚀' : st === 'delivered' ? '📬' : st === 'error' ? '⚠️' : '⏳';
     const posts = r.content.recentPosts.length ? `<table class="rep-table"><tr><th>ticket</th><th>account</th><th>hook</th><th>scheduled</th><th>status</th></tr>` +
       r.content.recentPosts.map(p => `<tr><td>${esc2(p.ticket)}</td><td>${esc2(p.account)}</td><td class="rt-hook">${esc2((p.hook || '').slice(0, 60))}</td><td>${p.scheduledAt ? new Date(p.scheduledAt).toLocaleString() : '–'}</td><td>${p.releaseUrl ? `<a href="${esc2(p.releaseUrl)}" target="_blank">${stIcon(p.status)} ${esc2(p.status)}</a>` : `${stIcon(p.status)} ${esc2(p.status)}`}</td></tr>`).join('') + '</table>'
       : '<div class="empty-state">No posts recorded yet.</div>';
-    if (repSection === 'business') return `<div class="rep-grid">${biz}</div>`;
-    if (repSection === 'channels') return `<div class="card set-card rep-section"><h3>Channels</h3>${chans}</div>`;
     return `
       <div class="card set-card rep-section"><h3>Content — last 7 days</h3>
-        <p class="desc">${r.content.posts7d} scheduled · ${r.content.published7d ?? 0} published · ${r.content.hooks7d} hook(s) written${r.content.byAccount.length ? ' — ' + r.content.byAccount.map(a => `${esc2(a.name)}: ${a.posts}`).join(' · ') : ''}</p>
+        <p class="desc">${r.content.posts7d} scheduled · ${r.content.published7d ?? 0} published · ${r.content.hooks7d} hook(s) written</p>
         ${posts}
-        <p class="desc">Per-post views/likes aren't available yet (channel-level only) — “what's working” sharpens once the attribution survey ships (docs/ATTRIBUTION.md).</p>
+        <p class="desc">Per-post views/likes aren't available yet (channel-level only) — "what's working" sharpens once the attribution survey ships.</p>
       </div>`;
   }
   function renderOverview(r, stats) {
-    const esc2 = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
     const order = ['rc_mrr', 'rc_active_subscriptions', 'rc_active_trials', 'rc_new_customers'];
     const byLabel = Object.fromEntries(r.business.map(m => [m.label, m]));
     const picks = order.map(k => byLabel[k]).filter(Boolean);
-    const biz = (picks.length ? picks : r.business.slice(0, 4)).map(m => `
-      <div class="rep-card">
-        <span class="rc-label">${esc2(RC_NAMES[m.label] || m.label.replace(/^rc_/, ''))}</span>
-        <span class="rc-value">${esc2(m.value)}</span>
-        <span class="rc-deltas">${deltaHtml(m.d1)} today · ${deltaHtml(m.d7)} 7d</span>
-      </div>`).join('')
-      || `<div class="empty-state">No business metrics yet${r.meta.revenuecatConfigured ? ' — hit Collect now' : ' — add the RevenueCat key in Setup, then Collect now'}.</div>`;
+    const biz = bizCards(picks.length ? picks : r.business.slice(0, 4), r.meta);
     const upcoming = (stats.upcoming || []).map(u => `
       <li><b>${new Date(u.scheduledAt).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}</b>
           ${esc2(u.account)} <span class="es-sub">${esc2(u.ticket)}</span></li>`).join('')
       || '<li class="es-sub">Nothing scheduled — run the Strategist on the Content page.</li>';
+    const infCards = (r.influencers || []).map(infCard).join('');
     return `
       <div class="rep-grid">${biz}</div>
+      ${infCards ? `<h2 class="ov-h2">Accounts</h2><div class="ov-grid">${infCards}</div>` : ''}
+      <h2 class="ov-h2">Operations</h2>
       <div class="ov-grid">
         <div class="ov-card">
           <h3>📅 Next posts</h3>
@@ -357,7 +436,6 @@
             <li>Autopilot runs: <b>${stats.autopilotTimes.length ? stats.autopilotTimes.join(' · ') : 'not set'}</b></li>
             <li>Daily report: <b>${esc2(r.meta.reportTime)}</b></li>
             <li>Image model: <b>${esc2(stats.imageModel)}</b></li>
-            <li>Accounts: <b>${(stats.influencers || []).join(', ') || 'none'}</b></li>
           </ul>
         </div>
         <div class="ov-card">
@@ -366,7 +444,7 @@
             <li>Posts scheduled: <b>${r.content.posts7d}</b></li>
             <li>Confirmed published: <b>${r.content.published7d ?? 0}</b></li>
             <li>Hooks written: <b>${r.content.hooks7d}</b></li>
-            <li>Awaiting your approval: <b>${countsCache['Needs Approval'] || 0}</b> <span class="es-sub">(Board)</span></li>
+            <li>Awaiting approval: <b>${countsCache['Needs Approval'] || 0}</b> <span class="es-sub">(Board)</span></li>
           </ul>
         </div>
       </div>`;

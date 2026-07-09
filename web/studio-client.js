@@ -77,6 +77,10 @@
       get: () => api('/report'),
       collect: () => api('/report/collect', {})
     },
+    calendar: {
+      list: (start, end) => api('/calendar?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end)),
+      setPublished: (ticket, published) => api('/calendar/' + encodeURIComponent(ticket) + '/publish', { published })
+    },
     board: {
       list: (states) => api('/board?states=' + encodeURIComponent(states.join(','))),
       create: (payload) => api('/board/create', payload),

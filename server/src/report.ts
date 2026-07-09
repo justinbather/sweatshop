@@ -58,39 +58,40 @@ export async function collectAll(): Promise<string[]> {
 
 // ---- report ----------------------------------------------------------------------
 
-type Metric = { label: string; value: number; d1: number | null; d7: number | null };
+type Metric = { label: string; value: number; d1: number | null; d7: number | null; d30: number | null };
 
-/** Latest value + delta vs ~1 day and ~7 days ago (nearest older sample). */
-function series(rows: { label: string; value: number; date: string }[]): Map<string, Metric> {
+/** value + deltas vs ~1/7/30 days ago (nearest older sample) for one label's series. */
+function deltasFor(rows: { value: number; date: string }[]): Omit<Metric, "label"> {
+  const samples = [...rows].sort((a, b) => a.date.localeCompare(b.date));
+  const latest = samples[samples.length - 1];
+  const at = (daysBack: number): number | null => {
+    const target = new Date(latest.date + "T00:00:00Z");
+    target.setUTCDate(target.getUTCDate() - daysBack);
+    const t = target.toISOString().slice(0, 10);
+    const older = [...samples].reverse().find((s) => s.date <= t);
+    return older && older.date !== latest.date ? older.value : null;
+  };
+  const d = (v: number | null) => (v == null ? null : latest.value - v);
+  return { value: latest.value, d1: d(at(1)), d7: d(at(7)), d30: d(at(30)) };
+}
+
+function seriesByLabel(rows: { label: string; value: number; date: string }[]): Metric[] {
   const byLabel = new Map<string, { value: number; date: string }[]>();
   for (const r of rows) (byLabel.get(r.label) ?? byLabel.set(r.label, []).get(r.label)!).push(r);
-  const out = new Map<string, Metric>();
-  for (const [label, samples] of byLabel) {
-    samples.sort((a, b) => a.date.localeCompare(b.date));
-    const latest = samples[samples.length - 1];
-    const at = (daysBack: number): number | null => {
-      const target = new Date(latest.date + "T00:00:00Z");
-      target.setUTCDate(target.getUTCDate() - daysBack);
-      const t = target.toISOString().slice(0, 10);
-      const older = [...samples].reverse().find((s) => s.date <= t);
-      return older && older.date !== latest.date ? older.value : null;
-    };
-    const d = (v: number | null) => (v == null ? null : latest.value - v);
-    out.set(label, { label, value: latest.value, d1: d(at(1)), d7: d(at(7)) });
-  }
-  return out;
+  return [...byLabel.entries()].map(([label, s]) => ({ label, ...deltasFor(s) }));
 }
 
 export async function buildReport() {
-  const [app, chan, posts7, published7, byAccount, hooks7, recent, lastCollected, cfg] = await Promise.all([
+  const [app, chan, posts7, published7, perAcct, hooks7, recent, lastCollected, cfg] = await Promise.all([
     pool.query("SELECT label, value::float AS value, date::text AS date FROM app_metrics ORDER BY date"),
-    pool.query(`SELECT i.name || ' · ' || m.label AS label, m.value::float AS value, m.date::text AS date
+    pool.query(`SELECT m.influencer_id AS iid, i.name AS iname, m.label AS label, m.value::float AS value, m.date::text AS date
                 FROM account_metrics m JOIN influencers i ON i.id = m.influencer_id ORDER BY m.date`),
     pool.query("SELECT count(*)::int AS n FROM posts WHERE created_at > now() - interval '7 days'"),
     pool.query("SELECT count(*)::int AS n FROM posts WHERE status = 'published' AND posted_at > now() - interval '7 days'"),
-    pool.query(`SELECT coalesce(i.name, p.influencer_id) AS name, count(*)::int AS n, max(p.scheduled_at) AS last
-                FROM posts p LEFT JOIN influencers i ON i.id = p.influencer_id
-                WHERE p.created_at > now() - interval '7 days' GROUP BY 1 ORDER BY n DESC`),
+    pool.query(`SELECT influencer_id AS iid, count(*)::int AS posts,
+                       count(*) FILTER (WHERE status = 'published')::int AS published,
+                       max(scheduled_at) AS last
+                FROM posts WHERE created_at > now() - interval '7 days' GROUP BY 1`),
     pool.query("SELECT count(*)::int AS n FROM hooks WHERE created_at > now() - interval '7 days'"),
     pool.query(`SELECT p.ticket, coalesce(i.name, p.influencer_id) AS account, h.text AS hook,
                        p.scheduled_at, p.created_at, p.status, p.release_url
@@ -99,14 +100,31 @@ export async function buildReport() {
     getConfigValue<string>("state:lastCollected"),
     getConfigValue<Record<string, unknown>>("config"),
   ]);
+
+  // group channel metrics per influencer + attach their 7-day content activity
+  const posts = new Map<string, { posts: number; published: number; last: string | null }>(
+    perAcct.rows.map((r) => [r.iid, { posts: r.posts, published: r.published, last: r.last }]),
+  );
+  const chanByInf = new Map<string, { name: string; rows: { label: string; value: number; date: string }[] }>();
+  for (const r of chan.rows) {
+    const g = chanByInf.get(r.iid) ?? chanByInf.set(r.iid, { name: r.iname, rows: [] }).get(r.iid)!;
+    g.rows.push({ label: r.label, value: r.value, date: r.date });
+  }
+  const influencers = [...chanByInf.entries()].map(([iid, g]) => ({
+    id: iid, name: g.name,
+    metrics: seriesByLabel(g.rows),
+    posts7d: posts.get(iid)?.posts ?? 0,
+    published7d: posts.get(iid)?.published ?? 0,
+  }));
+
   return {
-    business: [...series(app.rows).values()],
-    channels: [...series(chan.rows).values()],
+    business: seriesByLabel(app.rows),
+    influencers,
     content: {
       posts7d: posts7.rows[0].n,
       published7d: published7.rows[0].n,
       hooks7d: hooks7.rows[0].n,
-      byAccount: byAccount.rows.map((r) => ({ name: r.name, posts: r.n, last: r.last })),
+      byAccount: [...posts.entries()].map(([iid, p]) => ({ name: chanByInf.get(iid)?.name || iid, posts: p.posts, last: p.last })).sort((a, b) => b.posts - a.posts),
       recentPosts: recent.rows.map((r) => ({
         ticket: r.ticket, account: r.account, hook: r.hook || "", scheduledAt: r.scheduled_at,
         status: r.status || "scheduled", releaseUrl: r.release_url || null,
@@ -134,11 +152,10 @@ async function sendDigest(): Promise<void> {
   const biz = r.business
     .map((m) => `${RC_NAMES[m.label] || m.label}: **${m.value}**${fmtDelta(m.d1)}`)
     .join(" · ") || "no RevenueCat data yet";
-  const followers = r.channels
-    .filter((c) => /Followers/i.test(c.label))
-    .map((c) => `${c.label.replace(" · Followers", "")}: **${c.value}**${fmtDelta(m7(c))}`)
+  const followers = r.influencers
+    .map((inf) => { const f = inf.metrics.find((m) => /Followers/i.test(m.label)); return f ? `${inf.name}: **${f.value}**${fmtDelta(f.d7 ?? f.d1)}` : null; })
+    .filter(Boolean)
     .join(" · ") || "no channel data yet";
-  function m7(c: Metric) { return c.d7 ?? c.d1; }
   notify("info", "📊 Daily report", {
     detail: [
       `**Business (Δ vs yesterday)**\n${biz}`,

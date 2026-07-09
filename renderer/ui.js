@@ -282,6 +282,24 @@ Myth-bust — correct a common belief"></textarea></div>
       </section>`;
   }
 
+  function calendar() {
+    return `
+      <section class="page">
+        <div class="page-head">
+          <span class="eyebrow">schedule</span>
+          <h1>Calendar</h1>
+          <p>Every scheduled post by day (Postiz slot time). When you\u2019ve finished + published one in the TikTok app, mark it published here.</p>
+        </div>
+        <div class="cal-bar">
+          <button type="button" class="btn sm" id="calPrev">‹</button>
+          <h2 class="cal-month" id="calMonth">…</h2>
+          <button type="button" class="btn sm" id="calNext">›</button>
+          <span class="cal-legend"><i class="st-dot sched"></i>scheduled <i class="st-dot delivered"></i>in inbox <i class="st-dot published"></i>published <i class="st-dot error"></i>error</span>
+        </div>
+        <div class="cal-grid" id="calGrid"><div class="empty-state">Loading…</div></div>
+      </section>`;
+  }
+
   function home() {
     return `
       <section class="page">
@@ -332,5 +350,5 @@ Myth-bust — correct a common belief"></textarea></div>
         </div>`;
   }
 
-  window.UI = { home, content, setup, board, settings, brand, cast, feedItems, feedItem, mdLite };
+  window.UI = { home, content, setup, board, calendar, settings, brand, cast, feedItems, feedItem, mdLite };
 })();
