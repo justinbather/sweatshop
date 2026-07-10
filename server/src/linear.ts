@@ -122,6 +122,27 @@ export async function listTickets(states: string[]) {
   }));
 }
 
+export async function getTicketByIdentifier(identifier: string) {
+  const num = Number(identifier.split("-")[1]);
+  if (!num) throw new Error(`bad ticket identifier: ${identifier}`);
+  const d = await gql(
+    `query($team: String!, $num: Float!) {
+      issues(filter: { team: { key: { eq: $team } }, number: { eq: $num } }) {
+        nodes { id identifier title url state { name } description
+                comments { nodes { body createdAt } } } } }`,
+    { team: TEAM, num },
+  );
+  const n = d?.issues?.nodes?.[0];
+  if (!n) throw new Error(`ticket ${identifier} not found`);
+  return {
+    id: n.id, identifier: n.identifier, title: n.title, url: n.url,
+    state: n.state?.name || "", description: n.description || "",
+    comments: [...(n.comments?.nodes || [])]
+      .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+      .map((c: any) => ({ body: c.body, createdAt: c.createdAt })),
+  };
+}
+
 export async function createTicket(title: string, description: string, stateName: string) {
   const [tid, sid] = await Promise.all([teamId(), stateId(stateName)]);
   const d = await gql(

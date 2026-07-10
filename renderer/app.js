@@ -162,6 +162,46 @@
   }
 
 
+  // ---- ticket modal (reusable: calendar, and anywhere) ------------------------
+  let modalOnChange = null;
+  async function openTicketModal(identifier, opts = {}) {
+    const modal = document.getElementById('modal');
+    if (!modal || !identifier) return;
+    const esc2 = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    modal.hidden = false;
+    modal.innerHTML = `<div class="modal-card"><div class="empty-state">Loading ${esc2(identifier)}…</div></div>`;
+    let t;
+    try { t = await window.studio.board.get(identifier); }
+    catch (e) {
+      modal.innerHTML = `<div class="modal-card"><div class="modal-body"><div class="empty-state">⚠ ${esc2(e.message || e)}</div></div><div class="modal-foot"><button class="btn" data-modal-close>Close</button></div></div>`;
+      return;
+    }
+    const md = window.UI.mdLite;
+    const comments = (t.comments || []).map(c => `<div class="bd-comment">${md ? md(c.body) : esc2(c.body)}</div>`).join('');
+    const isPub = (opts.status === 'published') || t.state === 'Published';
+    modal.innerHTML = `
+      <div class="modal-card">
+        <div class="modal-head">
+          <span class="bd-idf">${esc2(t.identifier)}</span>
+          <span class="modal-title">${esc2(t.title)}</span>
+          <span class="modal-state">${esc2(t.state)}</span>
+          <button class="btn sm" data-modal-close title="close">✕</button>
+        </div>
+        <div class="modal-body">
+          <div class="bd-desc">${md ? md(t.description || '_no description_') : esc2(t.description)}</div>
+          ${comments ? `<div class="bd-comments"><h4>Comments</h4>${comments}</div>` : ''}
+        </div>
+        <div class="modal-foot">
+          <a class="btn sm" href="${esc2(t.url)}" target="_blank">Open in Linear ↗</a>
+          <span class="modal-spacer"></span>
+          ${isPub
+            ? `<button class="btn" data-modal-pub="${esc2(t.identifier)}" data-to="0">↩ Mark not published</button>`
+            : `<button class="btn primary btn-lg" data-modal-pub="${esc2(t.identifier)}" data-to="1">✅ Mark published</button>`}
+        </div>
+      </div>`;
+  }
+  function closeModal() { const m = document.getElementById('modal'); if (m) { m.hidden = true; m.innerHTML = ''; } }
+
   // ---- calendar: scheduled posts by day + mark published -----------------------
   let calRef = new Date(); calRef.setDate(1);
   async function mountCalendar() {
@@ -203,16 +243,13 @@
 
     document.getElementById('calPrev').onclick = () => { calRef.setMonth(calRef.getMonth() - 1); load(); };
     document.getElementById('calNext').onclick = () => { calRef.setMonth(calRef.getMonth() + 1); load(); };
-    grid.onclick = async (e) => {
+    grid.onclick = (e) => {
       const post = e.target.closest('.cal-post');
       if (!post) return;
       const ticket = post.dataset.ticket;
-      const isPub = post.dataset.status === 'published';
-      const action = isPub ? 'Mark this as NOT published (revert)?' : `Mark ${ticket} as published?`;
-      if (!confirm(action)) return;
-      post.style.opacity = '.5';
-      try { await api.setPublished(ticket, !isPub); await load(); }
-      catch (err) { alert(err.message || err); post.style.opacity = '1'; }
+      if (!ticket) return; // scheduled directly in Postiz, no linked ticket
+      modalOnChange = load;
+      openTicketModal(ticket, { status: post.dataset.status });
     };
   }
 
@@ -698,9 +735,19 @@
 
 
   // ---- interactions ---------------------------------------------------------
-  document.addEventListener('click', (e) => {
+  document.addEventListener('click', async (e) => {
     const tab = e.target.closest('[data-tab]');
     if (tab) { current = tab.dataset.tab; render(); return; }
+    // ticket modal
+    if (e.target.closest('[data-modal-close]') || e.target.id === 'modal') { closeModal(); return; }
+    const pub = e.target.closest('[data-modal-pub]');
+    if (pub) {
+      const id = pub.dataset.modalPub, toPub = pub.dataset.to === '1';
+      pub.disabled = true; pub.textContent = '…';
+      try { await window.studio.calendar.setPublished(id, toPub); closeModal(); if (modalOnChange) modalOnChange(); }
+      catch (err) { alert(err.message || err); pub.disabled = false; }
+      return;
+    }
     if (e.target.closest('#actToggle')) {
       const d = document.getElementById('drawer');
       if (d) { d.classList.toggle('open'); const fl = document.getElementById('drawerFeed'); if (fl) updateFeed(fl); }

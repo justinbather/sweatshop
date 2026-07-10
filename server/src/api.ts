@@ -2,7 +2,7 @@ import { Router, json } from "express";
 import { pool, getConfigValue, setConfigValue } from "./db.js";
 import { listRefs, addRef, removeRef, mimeFor } from "../../agents/generator/src/assets.js";
 import { agentStatus, setEnabled, runOnce } from "./workers.js";
-import { pipelineCounts, listApprovals, resolveApproval, listTickets, createTicket, moveIssueById, commentIssueById, uploadToLinear, fetchLinearAsset, moveTicket } from "./linear.js";
+import { pipelineCounts, listApprovals, resolveApproval, listTickets, createTicket, moveIssueById, commentIssueById, uploadToLinear, fetchLinearAsset, moveTicket, getTicketByIdentifier } from "./linear.js";
 import { buildReport, collectAll } from "./report.js";
 
 /**
@@ -172,24 +172,58 @@ api.get("/asset", (req: any, res: any) => {
     .catch((e) => res.status(400).json({ error: e instanceof Error ? e.message : String(e) }));
 });
 
+api.get("/ticket/:id", wrap(async (req) => getTicketByIdentifier(req.params.id)));
+
 // ---- calendar (scheduled posts + mark published) ----------------------------------
+// Postiz is the source of truth for what's actually scheduled; we enrich each post
+// with our ticket/hook (matched on the Postiz post id) and prefer our locally-marked
+// published/error status. Falls back to the posts table if Postiz is unreachable.
 api.get("/calendar", wrap(async (req) => {
   const start = String(req.query.start || "");
   const end = String(req.query.end || "");
   if (!start || !end) throw new Error("start + end query params required (ISO)");
+
   const { rows } = await pool.query(
-    `SELECT p.ticket, coalesce(i.name, p.influencer_id) AS account, h.text AS hook,
-            p.scheduled_at, p.posted_at, p.status, p.release_url
+    `SELECT p.id, p.ticket, coalesce(i.name, p.influencer_id) AS account, h.text AS hook,
+            p.scheduled_at, p.status, p.release_url
      FROM posts p LEFT JOIN influencers i ON i.id = p.influencer_id
      LEFT JOIN hooks h ON h.id = p.hook_id
-     WHERE p.scheduled_at >= $1 AND p.scheduled_at < $2
-     ORDER BY p.scheduled_at`,
+     WHERE p.scheduled_at >= $1 AND p.scheduled_at < $2`,
     [start, end],
   );
-  return rows.map((r) => ({
+  const byId = new Map(rows.map((r) => [String(r.id), r]));
+
+  const stored = await secretsMap();
+  const key = process.env.POSTIZ_API_KEY || stored.POSTIZ_API_KEY;
+  if (key) {
+    try {
+      const base = process.env.POSTIZ_API_URL || "https://api.postiz.com/public/v1";
+      const res = await fetch(`${base}/posts?startDate=${encodeURIComponent(start)}&endDate=${encodeURIComponent(end)}`, { headers: { Authorization: key } });
+      if (res.ok) {
+        const data = await res.json();
+        const list: any[] = Array.isArray(data) ? data : data.posts || [];
+        return list.map((p) => {
+          const mine = byId.get(String(p.id));
+          const st = String(p.state || "").toUpperCase();
+          const status = mine && (mine.status === "published" || mine.status === "error")
+            ? mine.status
+            : st === "PUBLISHED" ? "published" : st === "ERROR" ? "error" : st === "DRAFT" ? "draft" : "scheduled";
+          return {
+            ticket: mine?.ticket || null,
+            account: p.integration?.name || mine?.account || "unknown",
+            hook: mine?.hook || "",
+            scheduledAt: p.publishDate || mine?.scheduled_at,
+            status,
+            releaseUrl: p.releaseURL || mine?.release_url || null,
+          };
+        }).filter((e) => e.scheduledAt);
+      }
+    } catch { /* fall through to DB */ }
+  }
+  // no Postiz / unreachable → our own records
+  return [...byId.values()].map((r) => ({
     ticket: r.ticket, account: r.account, hook: r.hook || "",
-    scheduledAt: r.scheduled_at, postedAt: r.posted_at,
-    status: r.status || "scheduled", releaseUrl: r.release_url || null,
+    scheduledAt: r.scheduled_at, status: r.status || "scheduled", releaseUrl: r.release_url || null,
   }));
 }));
 api.post("/calendar/:ticket/publish", wrap(async (req) => {

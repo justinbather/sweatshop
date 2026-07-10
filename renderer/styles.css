@@ -308,3 +308,15 @@ button { font-family: var(--body); }
 .cp-acct { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cp-tk { font-family: var(--mono); color: var(--text-faint); margin-left: auto; flex: none; }
 @media (max-width: 720px) { .cal-cell { min-height: 64px; } .cp-tk { display: none; } }
+
+/* ---- ticket modal ------------------------------------------------------------------ */
+.modal-overlay { position: fixed; inset: 0; z-index: 100; background: rgba(55, 50, 42, .42); display: grid; place-items: center; padding: 24px; backdrop-filter: blur(2px); }
+.modal-card { background: var(--panel); border: 1px solid var(--line-soft); border-radius: var(--r); box-shadow: 0 24px 60px -24px rgba(55,50,42,.55); width: min(720px, 100%); max-height: 86vh; display: flex; flex-direction: column; overflow: hidden; }
+.modal-head { display: flex; align-items: center; gap: 10px; padding: 15px 18px; border-bottom: 1px solid var(--line-soft); }
+.modal-title { font-family: var(--display); font-size: 16px; font-weight: 600; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.modal-state { font-family: var(--mono); font-size: 10px; color: var(--text-dim); background: var(--panel-3); padding: 2px 9px; border-radius: 20px; flex: none; }
+.modal-body { padding: 6px 18px 14px; overflow-y: auto; }
+.modal-foot { display: flex; align-items: center; gap: 10px; padding: 13px 18px; border-top: 1px solid var(--line-soft); background: var(--panel-2); }
+.modal-spacer { flex: 1; }
+.btn-lg { padding: 11px 22px; font-size: 14px; }
+.cal-post[data-ticket=""] { cursor: default; opacity: .8; }

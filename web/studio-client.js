@@ -85,7 +85,8 @@
       list: (states) => api('/board?states=' + encodeURIComponent(states.join(','))),
       create: (payload) => api('/board/create', payload),
       move: (id, state) => api(`/board/${encodeURIComponent(id)}/move`, { state }),
-      comment: (id, body) => api(`/board/${encodeURIComponent(id)}/comment`, { body })
+      comment: (id, body) => api(`/board/${encodeURIComponent(id)}/comment`, { body }),
+      get: (identifier) => api('/ticket/' + encodeURIComponent(identifier))
     },
     worker: {
       onLog: (cb) => { logSubs.add(cb); return () => logSubs.delete(cb); }
