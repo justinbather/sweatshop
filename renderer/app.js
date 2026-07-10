@@ -163,44 +163,65 @@
 
 
   // ---- ticket modal (reusable: calendar, and anywhere) ------------------------
-  let modalOnChange = null;
-  async function openTicketModal(identifier, opts = {}) {
+  let modalOnChange = null, modalEntry = null;
+  async function openPostModal(entry) {
     const modal = document.getElementById('modal');
-    if (!modal || !identifier) return;
+    if (!modal || !entry) return;
+    modalEntry = entry;
     const esc2 = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-    modal.hidden = false;
-    modal.innerHTML = `<div class="modal-card"><div class="empty-state">Loading ${esc2(identifier)}…</div></div>`;
-    let t;
-    try { t = await window.studio.board.get(identifier); }
-    catch (e) {
-      modal.innerHTML = `<div class="modal-card"><div class="modal-body"><div class="empty-state">⚠ ${esc2(e.message || e)}</div></div><div class="modal-foot"><button class="btn" data-modal-close>Close</button></div></div>`;
-      return;
-    }
     const md = window.UI.mdLite;
-    const comments = (t.comments || []).map(c => `<div class="bd-comment">${md ? md(c.body) : esc2(c.body)}</div>`).join('');
-    const isPub = (opts.status === 'published') || t.state === 'Published';
-    modal.innerHTML = `
-      <div class="modal-card">
-        <div class="modal-head">
-          <span class="bd-idf">${esc2(t.identifier)}</span>
-          <span class="modal-title">${esc2(t.title)}</span>
-          <span class="modal-state">${esc2(t.state)}</span>
-          <button class="btn sm" data-modal-close title="close">✕</button>
-        </div>
-        <div class="modal-body">
-          <div class="bd-desc">${md ? md(t.description || '_no description_') : esc2(t.description)}</div>
-          ${comments ? `<div class="bd-comments"><h4>Comments</h4>${comments}</div>` : ''}
-        </div>
-        <div class="modal-foot">
-          <a class="btn sm" href="${esc2(t.url)}" target="_blank">Open in Linear ↗</a>
-          <span class="modal-spacer"></span>
-          ${isPub
-            ? `<button class="btn" data-modal-pub="${esc2(t.identifier)}" data-to="0">↩ Mark not published</button>`
-            : `<button class="btn primary btn-lg" data-modal-pub="${esc2(t.identifier)}" data-to="1">✅ Mark published</button>`}
-        </div>
-      </div>`;
+    const isPub = entry.status === 'published';
+    const when = entry.scheduledAt ? new Date(entry.scheduledAt).toLocaleString() : '';
+    const pubBtn = isPub
+      ? `<button class="btn" data-modal-pub data-to="0">↩ Mark not published</button>`
+      : `<button class="btn primary btn-lg" data-modal-pub data-to="1">✅ Mark published</button>`;
+    const release = entry.releaseUrl ? `<a class="btn sm" href="${esc2(entry.releaseUrl)}" target="_blank">View post ↗</a>` : '';
+    modal.hidden = false;
+
+    if (entry.ticket) {
+      modal.innerHTML = `<div class="modal-card"><div class="empty-state">Loading ${esc2(entry.ticket)}…</div></div>`;
+      let t;
+      try { t = await window.studio.board.get(entry.ticket); }
+      catch (e) {
+        modal.innerHTML = `<div class="modal-card"><div class="modal-body"><div class="empty-state">⚠ ${esc2(e.message || e)}</div></div><div class="modal-foot"><span class="modal-spacer"></span><button class="btn" data-modal-close>Close</button></div></div>`;
+        return;
+      }
+      const comments = (t.comments || []).map(c => `<div class="bd-comment">${md ? md(c.body) : esc2(c.body)}</div>`).join('');
+      modal.innerHTML = `
+        <div class="modal-card">
+          <div class="modal-head">
+            <span class="bd-idf">${esc2(t.identifier)}</span>
+            <span class="modal-title">${esc2(t.title)}</span>
+            <span class="modal-state">${esc2(entry.account)} · ${esc2(when)}</span>
+            <button class="btn sm" data-modal-close title="close">✕</button>
+          </div>
+          <div class="modal-body">
+            <div class="bd-desc">${md ? md(t.description || '_no description_') : esc2(t.description)}</div>
+            ${comments ? `<div class="bd-comments"><h4>Comments</h4>${comments}</div>` : ''}
+          </div>
+          <div class="modal-foot">
+            <a class="btn sm" href="${esc2(t.url)}" target="_blank">Open in Linear ↗</a>${release}
+            <span class="modal-spacer"></span>${pubBtn}
+          </div>
+        </div>`;
+    } else {
+      // scheduled directly in Postiz — no linked ticket, show the caption
+      modal.innerHTML = `
+        <div class="modal-card">
+          <div class="modal-head">
+            <span class="modal-title">${esc2(entry.account)}</span>
+            <span class="modal-state">${esc2(entry.status)} · ${esc2(when)}</span>
+            <button class="btn sm" data-modal-close title="close">✕</button>
+          </div>
+          <div class="modal-body">
+            <p class="es-sub">Scheduled in Postiz — no linked pipeline ticket.</p>
+            <div class="bd-desc">${esc2(entry.content || '(no caption)').replace(/\n/g, '<br/>')}</div>
+          </div>
+          <div class="modal-foot">${release}<span class="modal-spacer"></span>${pubBtn}</div>
+        </div>`;
+    }
   }
-  function closeModal() { const m = document.getElementById('modal'); if (m) { m.hidden = true; m.innerHTML = ''; } }
+  function closeModal() { const m = document.getElementById('modal'); if (m) { m.hidden = true; m.innerHTML = ''; } modalEntry = null; }
 
   // ---- calendar: scheduled posts by day + mark published -----------------------
   let calRef = new Date(); calRef.setDate(1);
@@ -220,7 +241,7 @@
       const gridStart = new Date(first); gridStart.setDate(1 - first.getDay());
       const gridEnd = new Date(next); if (gridEnd.getDay() !== 0) gridEnd.setDate(gridEnd.getDate() + (7 - gridEnd.getDay()));
       let posts = [];
-      try { posts = await api.list(gridStart.toISOString(), gridEnd.toISOString()); } catch (e) { grid.innerHTML = `<div class="empty-state">⚠ ${esc2(e.message || e)}</div>`; return; }
+      try { posts = await api.list(gridStart.toISOString(), gridEnd.toISOString()); window.__calEntries = posts; } catch (e) { grid.innerHTML = `<div class="empty-state">⚠ ${esc2(e.message || e)}</div>`; return; }
       const byDay = {};
       for (const p of posts) { const k = new Date(p.scheduledAt).toDateString(); (byDay[k] = byDay[k] || []).push(p); }
       const dows = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => `<div class="cal-dow">${d}</div>`).join('');
@@ -230,7 +251,7 @@
         const key = d.toDateString();
         const inMonth = d.getMonth() === first.getMonth();
         const items = (byDay[key] || []).sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt)).map(p => `
-          <div class="cal-post ${stClass(p.status)}" data-ticket="${esc2(p.ticket)}" data-status="${esc2(p.status)}" title="${esc2(p.account)} · ${esc2(p.hook)}">
+          <div class="cal-post ${stClass(p.status)}" data-postiz="${esc2(p.postizId)}" data-status="${esc2(p.status)}" title="${esc2(p.account)} · ${esc2(p.hook || p.content || '')}">
             <span class="cp-time">${new Date(p.scheduledAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</span>
             <span class="cp-acct">${esc2(p.account)}</span>
             <span class="cp-tk">${esc2(p.ticket)}</span>
@@ -246,10 +267,10 @@
     grid.onclick = (e) => {
       const post = e.target.closest('.cal-post');
       if (!post) return;
-      const ticket = post.dataset.ticket;
-      if (!ticket) return; // scheduled directly in Postiz, no linked ticket
+      const entry = (window.__calEntries || []).find(x => String(x.postizId) === post.dataset.postiz);
+      if (!entry) return;
       modalOnChange = load;
-      openTicketModal(ticket, { status: post.dataset.status });
+      openPostModal(entry);
     };
   }
 
@@ -741,10 +762,10 @@
     // ticket modal
     if (e.target.closest('[data-modal-close]') || e.target.id === 'modal') { closeModal(); return; }
     const pub = e.target.closest('[data-modal-pub]');
-    if (pub) {
-      const id = pub.dataset.modalPub, toPub = pub.dataset.to === '1';
+    if (pub && modalEntry) {
+      const toPub = pub.dataset.to === '1';
       pub.disabled = true; pub.textContent = '…';
-      try { await window.studio.calendar.setPublished(id, toPub); closeModal(); if (modalOnChange) modalOnChange(); }
+      try { await window.studio.calendar.setPublished(modalEntry.postizId, modalEntry.ticket, toPub); closeModal(); if (modalOnChange) modalOnChange(); }
       catch (err) { alert(err.message || err); pub.disabled = false; }
       return;
     }

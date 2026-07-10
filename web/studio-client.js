@@ -79,7 +79,7 @@
     },
     calendar: {
       list: (start, end) => api('/calendar?start=' + encodeURIComponent(start) + '&end=' + encodeURIComponent(end)),
-      setPublished: (ticket, published) => api('/calendar/' + encodeURIComponent(ticket) + '/publish', { published })
+      setPublished: (postizId, ticket, published) => api('/calendar/publish', { postizId, ticket, published })
     },
     board: {
       list: (states) => api('/board?states=' + encodeURIComponent(states.join(','))),

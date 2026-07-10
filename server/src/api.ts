@@ -192,6 +192,10 @@ api.get("/calendar", wrap(async (req) => {
     [start, end],
   );
   const byId = new Map(rows.map((r) => [String(r.id), r]));
+  // posts the user manually ticked "published" (by Postiz id) — the UPLOAD-mode
+  // final publish happens in the TikTok app, invisible to any API, so we track it.
+  const manual = new Set<string>((await getConfigValue<string[]>("calendarPublished")) || []);
+  const asStr = (v: unknown) => (typeof v === "string" ? v : Array.isArray(v) ? (v[0]?.content || "") : "");
 
   const stored = await secretsMap();
   const key = process.env.POSTIZ_API_KEY || stored.POSTIZ_API_KEY;
@@ -203,14 +207,19 @@ api.get("/calendar", wrap(async (req) => {
         const data = await res.json();
         const list: any[] = Array.isArray(data) ? data : data.posts || [];
         return list.map((p) => {
-          const mine = byId.get(String(p.id));
+          const id = String(p.id);
+          const mine = byId.get(id);
           const st = String(p.state || "").toUpperCase();
-          const status = mine && (mine.status === "published" || mine.status === "error")
-            ? mine.status
-            : st === "PUBLISHED" ? "published" : st === "ERROR" ? "error" : st === "DRAFT" ? "draft" : "scheduled";
+          // UPLOAD mode: Postiz PUBLISHED = delivered to the TikTok inbox, NOT that
+          // you've published it in the app. Only YOU (manual tick) or our DB confirms live.
+          const status = manual.has(id) || mine?.status === "published" ? "published"
+            : mine?.status === "error" || st === "ERROR" ? "error"
+            : st === "PUBLISHED" ? "delivered" : st === "DRAFT" ? "draft" : "scheduled";
           return {
+            postizId: id,
             ticket: mine?.ticket || null,
             account: p.integration?.name || mine?.account || "unknown",
+            content: asStr(p.content).slice(0, 280),
             hook: mine?.hook || "",
             scheduledAt: p.publishDate || mine?.scheduled_at,
             status,
@@ -222,19 +231,29 @@ api.get("/calendar", wrap(async (req) => {
   }
   // no Postiz / unreachable → our own records
   return [...byId.values()].map((r) => ({
-    ticket: r.ticket, account: r.account, hook: r.hook || "",
-    scheduledAt: r.scheduled_at, status: r.status || "scheduled", releaseUrl: r.release_url || null,
+    postizId: String(r.id), ticket: r.ticket, account: r.account, content: "", hook: r.hook || "",
+    scheduledAt: r.scheduled_at,
+    status: manual.has(String(r.id)) ? "published" : (r.status || "scheduled"),
+    releaseUrl: r.release_url || null,
   }));
 }));
-api.post("/calendar/:ticket/publish", wrap(async (req) => {
-  const ticket = req.params.ticket;
-  const publish = req.body?.published !== false; // default true; false = revert
-  if (publish) {
-    await pool.query("UPDATE posts SET status = 'published', posted_at = coalesce(posted_at, now()) WHERE ticket = $1", [ticket]);
-    await moveTicket(ticket, "Published").catch(() => {}); // ticket may already be there
-  } else {
-    await pool.query("UPDATE posts SET status = 'scheduled', posted_at = NULL WHERE ticket = $1", [ticket]);
-    await moveTicket(ticket, "Drafted").catch(() => {});
+// mark a post published/unpublished by Postiz id; also moves the Linear ticket if linked
+api.post("/calendar/publish", wrap(async (req) => {
+  const postizId = String(req.body?.postizId || "");
+  const ticket = req.body?.ticket ? String(req.body.ticket) : null;
+  const publish = req.body?.published !== false;
+  if (!postizId) throw new Error("postizId required");
+  const set = new Set<string>((await getConfigValue<string[]>("calendarPublished")) || []);
+  if (publish) set.add(postizId); else set.delete(postizId);
+  await setConfigValue("calendarPublished", [...set]);
+  if (ticket) {
+    if (publish) {
+      await pool.query("UPDATE posts SET status = 'published', posted_at = coalesce(posted_at, now()) WHERE ticket = $1", [ticket]);
+      await moveTicket(ticket, "Published").catch(() => {});
+    } else {
+      await pool.query("UPDATE posts SET status = 'scheduled', posted_at = NULL WHERE ticket = $1", [ticket]);
+      await moveTicket(ticket, "Drafted").catch(() => {});
+    }
   }
   return { ok: true, status: publish ? "published" : "scheduled" };
 }));
