@@ -307,46 +307,6 @@
       input.addEventListener('keydown', e => { if (e.key === 'Enter') save(input.dataset.secret); }));
 
 
-    // content pillars (non-secret config)
-    const cfgP = window.studio && window.studio.config;
-    const pillarBox = document.getElementById('pillarBox');
-    if (cfgP && pillarBox) {
-      const escp = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-      let pillars = [];
-      try { pillars = (await cfgP.get()).pillars || []; } catch { /* fresh */ }
-      const renderPillars = () => {
-        pillarBox.innerHTML = pillars.map((p, i) => `
-          <div class="pillar-row ${p.toLowerCase() === 'random' ? 'rand' : ''}">
-            <span class="pillar-text">${p.toLowerCase() === 'random' ? '🎲 random — explore a new pattern' : escp(p)}</span>
-            <button type="button" class="slot-del" data-pillar-del="${i}" title="Remove">×</button>
-          </div>`).join('')
-          + `<div class="pillar-add">
-              <input class="field field-full" id="pillarInput" placeholder='e.g. 6 things that healed my gut in 2 months' />
-              <button type="button" class="btn sm" id="pillarAdd">+ Add pillar</button>
-              <button type="button" class="btn sm" id="pillarAddRand">+ 🎲 random slot</button>
-            </div>`;
-      };
-      pillarBox.addEventListener('click', async (e) => {
-        const del = e.target.closest('[data-pillar-del]');
-        if (del) { pillars.splice(+del.dataset.pillarDel, 1); await cfgP.set({ pillars }); renderPillars(); return; }
-        if (e.target.closest('#pillarAdd')) {
-          const inp = document.getElementById('pillarInput');
-          const v = inp && inp.value.trim();
-          if (v) { pillars.push(v); await cfgP.set({ pillars }); renderPillars(); }
-          return;
-        }
-        if (e.target.closest('#pillarAddRand')) { pillars.push('random'); await cfgP.set({ pillars }); renderPillars(); }
-      });
-      pillarBox.addEventListener('keydown', async (e) => {
-        if (e.key === 'Enter' && e.target.id === 'pillarInput') {
-          e.preventDefault();
-          const v = e.target.value.trim();
-          if (v) { pillars.push(v); await cfgP.set({ pillars }); renderPillars(); }
-        }
-      });
-      renderPillars();
-    }
-
     // autopilot run times (non-secret config)
     const cfgApi = window.studio && window.studio.config;
     const apSlots = document.getElementById('autopilotSlots');
@@ -773,6 +733,19 @@
               <input class="field" data-design="style" data-i="${i}" value="${esc((inf.design || {}).style || '')}" placeholder="style — e.g. minimal cards, big numbers, thin dividers" />
               <input class="field" data-design="voice" data-i="${i}" value="${esc((inf.design || {}).voice || '')}" placeholder="voice — e.g. authoritative, listy" />
             </div></div>` : ''}
+          <div class="fieldrow"><label>Content pillars<small>example hooks this account rotates through, one per run — 🎲 random = explore slot; the mix sets the ratio (2 pillars + 1 random ≈ 30% explore). Empty = playbook variety.</small></label>
+            <div class="pillar-box">
+              ${(inf.pillars || []).map((p, j) => `
+                <div class="pillar-row ${p.toLowerCase() === 'random' ? 'rand' : ''}">
+                  <span class="pillar-text">${p.toLowerCase() === 'random' ? '🎲 random — explore a new pattern' : esc(p)}</span>
+                  <button type="button" class="slot-del" data-cpd="${i}" data-j="${j}" title="Remove">×</button>
+                </div>`).join('')}
+              <div class="pillar-add">
+                <input class="field field-full" data-cpi="${i}" placeholder='e.g. 6 things that healed my gut in 2 months' />
+                <button type="button" class="btn sm" data-cpa="${i}">+ Add</button>
+                <button type="button" class="btn sm" data-cpar="${i}">+ 🎲 random</button>
+              </div>
+            </div></div>
           <div class="fieldrow"><label>Daily post times<small>posts fill these slots across days</small></label>
             <div class="slots">${slots || '<span class="es-sub">No slots yet.</span>'}
               <span class="slot-add"><input type="time" class="field slot-input" data-i="${i}" value="12:00" />
@@ -806,6 +779,18 @@
       if (en) { const i = +en.dataset.enable; cast[i].enabled = !(cast[i].enabled !== false); render(); return; }
       const rm = e.target.closest('[data-remove]');
       if (rm) { cast.splice(+rm.dataset.remove, 1); render(); return; }
+      const cpd = e.target.closest('[data-cpd]');
+      if (cpd) { const inf = cast[+cpd.dataset.cpd]; (inf.pillars = inf.pillars || []).splice(+cpd.dataset.j, 1); render(); return; }
+      const cpa = e.target.closest('[data-cpa]');
+      if (cpa) {
+        const i = +cpa.dataset.cpa;
+        const inp = list.querySelector(`[data-cpi="${i}"]`);
+        const v = inp && inp.value.trim();
+        if (v) { (cast[i].pillars = cast[i].pillars || []).push(v); render(); }
+        return;
+      }
+      const cpar = e.target.closest('[data-cpar]');
+      if (cpar) { const i = +cpar.dataset.cpar; (cast[i].pillars = cast[i].pillars || []).push('random'); render(); return; }
       const add = e.target.closest('[data-addslot]');
       if (add) {
         const i = +add.dataset.addslot;

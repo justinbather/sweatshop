@@ -55,11 +55,12 @@ api.post("/brief", wrap(async (req) => { await setConfigValue("brief", req.body 
 
 // ---- influencers ----------------------------------------------------------------
 api.get("/influencers", wrap(async () => {
-  const { rows } = await pool.query("SELECT id, name, postiz_integration_id, timeslots, enabled, profile, design FROM influencers ORDER BY created_at");
+  const { rows } = await pool.query("SELECT id, name, postiz_integration_id, timeslots, enabled, profile, design, pillars FROM influencers ORDER BY created_at");
   return rows.map((r) => ({
     id: r.id, name: r.name, postizIntegrationId: r.postiz_integration_id || "",
     timeslots: r.timeslots || [], enabled: !!r.enabled,
     profile: r.profile === "graphic" ? "graphic" : "ugc", design: r.design || undefined,
+    pillars: r.pillars || [],
   }));
 }));
 api.post("/influencers", wrap(async (req) => {
@@ -72,13 +73,14 @@ api.post("/influencers", wrap(async (req) => {
     enabled: i.enabled !== false,
     profile: i.profile === "graphic" ? "graphic" : "ugc",
     design: i.design && typeof i.design === "object" ? i.design : null,
+    pillars: Array.isArray(i.pillars) ? i.pillars.map((p: unknown) => String(p).trim()).filter(Boolean).slice(0, 20) : [],
   }));
   for (const i of clean) {
     await pool.query(
-      `INSERT INTO influencers (id, name, postiz_integration_id, timeslots, enabled, profile, design)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
-       ON CONFLICT (id) DO UPDATE SET name=$2, postiz_integration_id=$3, timeslots=$4, enabled=$5, profile=$6, design=$7`,
-      [i.id, i.name, i.postizIntegrationId, i.timeslots, i.enabled, i.profile, i.design ? JSON.stringify(i.design) : null],
+      `INSERT INTO influencers (id, name, postiz_integration_id, timeslots, enabled, profile, design, pillars)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT (id) DO UPDATE SET name=$2, postiz_integration_id=$3, timeslots=$4, enabled=$5, profile=$6, design=$7, pillars=$8`,
+      [i.id, i.name, i.postizIntegrationId, i.timeslots, i.enabled, i.profile, i.design ? JSON.stringify(i.design) : null, i.pillars],
     );
   }
   // removed from the roster: delete if unreferenced, else keep-but-disable (posts FK)

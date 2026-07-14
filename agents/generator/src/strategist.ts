@@ -48,19 +48,20 @@ function requireEnv(name: string): string {
 }
 
 /**
- * Hook pillars (Settings → Content pillars): the Strategist cycles through this
- * list, one entry per hook, persisting a cursor across runs. A literal "random"
- * entry is an EXPLORE slot (test a fresh pattern) — the ratio of pattern-to-random
- * entries in the list IS the exploit/explore ratio. Empty list → playbook-driven
- * variety as before.
+ * Content pillars live on each ACCOUNT (Cast card): the Strategist rotates through
+ * that account's own example hooks, one per run, with a per-account cursor. A
+ * "random" entry is an EXPLORE slot — the pattern-to-random mix in the account's
+ * list IS its exploit/explore ratio. No pillars (and the bench slot) → playbook
+ * variety.
  */
-async function nextPillars(count: number): Promise<(string | null)[]> {
-  const pillars = ((await loadAppConfig()).pillars ?? []).filter((p) => typeof p === "string" && p.trim());
-  if (!pillars.length) return Array(count).fill(null);
-  const cursor = Number((await getState("pillarCursor")) || 0) % pillars.length;
-  const picks = Array.from({ length: count }, (_, i) => pillars[(cursor + i) % pillars.length]);
-  await setState("pillarCursor", String((cursor + count) % pillars.length));
-  return picks.map((p) => (p.trim().toLowerCase() === "random" ? null : p));
+async function nextPillarFor(inf: Influencer): Promise<string | null> {
+  const pillars = (inf.pillars ?? []).filter((p) => typeof p === "string" && p.trim());
+  if (!pillars.length) return null;
+  const key = `pillarCursor:${inf.id}`;
+  const cursor = Number((await getState(key)) || 0) % pillars.length;
+  await setState(key, String((cursor + 1) % pillars.length));
+  const pick = pillars[cursor];
+  return pick.trim().toLowerCase() === "random" ? null : pick;
 }
 
 async function runTimes(): Promise<string[]> {
@@ -166,7 +167,8 @@ async function writeHooks(influencers: Influencer[], pillars: (string | null)[])
 // ---- 3. the autopilot ticket ---------------------------------------------------
 
 async function createTicket(board: Board, influencers: Influencer[]): Promise<void> {
-  const pillars = await nextPillars(HOOKS_PER_RUN);
+  const pillars: (string | null)[] = [];
+  for (let i = 0; i < HOOKS_PER_RUN; i++) pillars.push(influencers[i] ? await nextPillarFor(influencers[i]) : null);
   const hooks = await writeHooks(influencers, pillars);
   const stored = await addHooks(hooks);
   const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");

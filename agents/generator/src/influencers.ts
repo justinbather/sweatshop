@@ -30,6 +30,7 @@ export type Influencer = {
   enabled: boolean;
   profile?: Profile;           // default "ugc"
   design?: Design;             // graphic accounts: the design system
+  pillars?: string[];          // example hooks this account rotates through ("random" = explore slot)
 };
 
 export const profileOf = (i?: Influencer | null): Profile => (i?.profile === "graphic" ? "graphic" : "ugc");
@@ -40,7 +41,7 @@ const STATE_FILE = join(DATA_DIR, "schedule-state.json");
 export async function loadInfluencers(): Promise<Influencer[]> {
   if (usePg()) {
     const { rows } = await db().query(
-      "SELECT id, name, postiz_integration_id, timeslots, enabled, profile, design FROM influencers ORDER BY created_at",
+      "SELECT id, name, postiz_integration_id, timeslots, enabled, profile, design, pillars FROM influencers ORDER BY created_at",
     );
     return rows.map((r) => ({
       id: r.id,
@@ -50,6 +51,7 @@ export async function loadInfluencers(): Promise<Influencer[]> {
       enabled: !!r.enabled,
       profile: r.profile === "graphic" ? "graphic" : "ugc",
       design: r.design || undefined,
+      pillars: r.pillars || [],
     }));
   }
   try {
