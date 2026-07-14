@@ -182,6 +182,14 @@
           </div>
         </div>
         <div class="card set-card">
+          <h3>Content pillars</h3>
+          <p class="desc">The Strategist cycles through these, one per hook, across runs. Each entry is an example hook the new one should be a sibling of; a <b>🎲 random</b> entry is an explore slot that tests a fresh pattern. The mix sets the ratio — e.g. two pillars + one random ≈ 30% exploration. Empty = playbook-driven variety.</p>
+          <div class="set-row">
+            <div class="sr-text">Rotation<small>cycles in order, continuing across runs</small></div>
+            <div class="pillar-box" id="pillarBox"></div>
+          </div>
+        </div>
+        <div class="card set-card">
           <h3>Autopilot</h3>
           <p class="desc">The Strategist runs at these times each day: it refreshes analytics, writes 3 hooks, and kicks off a full run — one imaged post per influencer + one bench concept. Runs per day = posts per day per influencer. No times = autopilot idle. (Enable the Strategist on the Agents tab.)</p>
           <div class="set-row">

@@ -114,6 +114,29 @@ async function extractConcept(issue: Issue): Promise<Concept | null> {
   return null;
 }
 
+// Wardrobe: the reference images lock her IDENTITY, not her clothes — without
+// this, every post ships the same outfit. Deterministically seeded per
+// (concept, account) so all slides in a set — including later regens — share one
+// outfit, while different posts vary.
+const OUTFITS = [
+  "an oversized cream knit sweater and relaxed jeans",
+  "a casual matching athletic set with a light zip-up jacket",
+  "a plain oversized white tee and soft grey sweatpants",
+  "a cozy oatmeal hoodie and black leggings",
+  "a loose linen button-up over a simple tank",
+  "a chunky cardigan over a plain fitted top and mom jeans",
+  "a simple long-sleeve henley and joggers",
+  "an oversized flannel shirt over a basic tee",
+  "a comfy crewneck sweatshirt and denim shorts with bike shorts underneath",
+  "a soft ribbed lounge set in a muted earth tone",
+];
+function outfitFor(concept: Concept, influencerId: string): string {
+  const seed = `${concept.hook || concept.angle}|${influencerId}`;
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return OUTFITS[h % OUTFITS.length];
+}
+
 // Words in a beat that imply a person is in the shot (→ use the influencer).
 const PERSON_HINTS = /\b(she|her|hers|woman|girl|selfie|pov|face|hand|hands|holding|holds|walking|walks|sitting|sits|standing|smil|laugh|posing|person|influencer|model|mirror)\b/i;
 
@@ -133,7 +156,7 @@ type SlidePlan = { prompt: string; usesCharacter: boolean; styleAnchor?: boolean
 // Build one SINGLE-image prompt per slide. Each slide replicates the reference
 // slide's subject type (the Generator's beat already encodes it): a person shot →
 // the influencer (with her reference images); a food/object shot → objects only.
-function planSlides(concept: Concept, charName: string, style: string): SlidePlan[] {
+function planSlides(concept: Concept, charName: string, style: string, outfit: string): SlidePlan[] {
   const beats = concept.script && concept.script.length
     ? concept.script.map((b) => b.beat)
     : [concept.visualDirection || concept.hook || concept.angle];
@@ -143,7 +166,7 @@ function planSlides(concept: Concept, charName: string, style: string): SlidePla
   return beats.map((beat) => {
     const usesCharacter = (nameRe?.test(beat) ?? false) || PERSON_HINTS.test(beat);
     const subject = usesCharacter
-      ? `The person in the frame is ${charName || "the recurring influencer"}. EVERY reference image provided shows the SAME single person — match her face, hair, skin tone and styling EXACTLY; she must be unmistakably identical to the references and to the other slides in this set. Do not invent a different face. ${SAFE_CLAUSE}`
+      ? `The person in the frame is ${charName || "the recurring influencer"}. EVERY reference image provided shows the SAME single person — match her face, hair and skin tone EXACTLY (it must be unmistakably her), but do NOT copy the outfits from the reference images. Today she is wearing ${outfit} — keep this exact outfit identical on every slide in this set. Do not invent a different face. ${SAFE_CLAUSE}`
       : `No people at all in the frame — the subject is food / objects only.`;
     const prompt = [
       "A single vertical 9:16 photograph — ONE image only.",
@@ -192,7 +215,7 @@ function planSlidesGraphic(concept: Concept, design?: Design): SlidePlan[] {
 // legacy concepts without one, the target account's profile.
 function planFor(concept: ConceptStash, inf: Influencer, style: string): SlidePlan[] {
   const profile = concept.profile ?? profileOf(inf);
-  return profile === "graphic" ? planSlidesGraphic(concept, inf.design) : planSlides(concept, inf.name, style);
+  return profile === "graphic" ? planSlidesGraphic(concept, inf.design) : planSlides(concept, inf.name, style, outfitFor(concept, inf.id));
 }
 
 type RefImage = { mimeType: string; data: string };

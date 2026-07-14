@@ -47,6 +47,22 @@ function requireEnv(name: string): string {
   return v;
 }
 
+/**
+ * Hook pillars (Settings → Content pillars): the Strategist cycles through this
+ * list, one entry per hook, persisting a cursor across runs. A literal "random"
+ * entry is an EXPLORE slot (test a fresh pattern) — the ratio of pattern-to-random
+ * entries in the list IS the exploit/explore ratio. Empty list → playbook-driven
+ * variety as before.
+ */
+async function nextPillars(count: number): Promise<(string | null)[]> {
+  const pillars = ((await loadAppConfig()).pillars ?? []).filter((p) => typeof p === "string" && p.trim());
+  if (!pillars.length) return Array(count).fill(null);
+  const cursor = Number((await getState("pillarCursor")) || 0) % pillars.length;
+  const picks = Array.from({ length: count }, (_, i) => pillars[(cursor + i) % pillars.length]);
+  await setState("pillarCursor", String((cursor + count) % pillars.length));
+  return picks.map((p) => (p.trim().toLowerCase() === "random" ? null : p));
+}
+
 async function runTimes(): Promise<string[]> {
   const t = (await loadAppConfig()).autopilotTimes;
   return Array.isArray(t) ? t.filter((x: unknown) => typeof x === "string" && /^\d{1,2}:\d{2}$/.test(x)).sort() : [];
@@ -101,7 +117,7 @@ async function performanceContext(): Promise<string> {
   return lines.join("\n") || "No performance data yet — first run.";
 }
 
-async function writeHooks(influencers: Influencer[]): Promise<{ text: string; angle: string; rationale: string }[]> {
+async function writeHooks(influencers: Influencer[], pillars: (string | null)[]): Promise<{ text: string; angle: string; rationale: string }[]> {
   const skill = readFileSync(SKILL_FILE, "utf8");
   const product = await loadProductBrief();
   const system = [
@@ -110,13 +126,19 @@ async function writeHooks(influencers: Influencer[]): Promise<{ text: string; an
     productBriefToPrompt(product),
   ].filter(Boolean).join("\n\n---\n\n");
 
-  // hook i goes to account i (see createTicket) — write each in its account's register
+  // hook i goes to account i (see createTicket) — write each in its account's register,
+  // and follow its assigned pillar (or explore when the slot is a "random" pillar)
   const registers = Array.from({ length: HOOKS_PER_RUN }, (_, i) => {
     const inf = influencers[i];
-    if (!inf) return `${i + 1} → bench (ugc register: personal, first-person)`;
-    return profileOf(inf) === "graphic"
-      ? `${i + 1} → ${inf.name} — GRAPHIC account: authoritative, specific, listy; must read as a designed card title`
-      : `${i + 1} → ${inf.name} — UGC account: personal, first-person, lived-experience voice`;
+    const reg = !inf ? `bench (ugc register: personal, first-person)`
+      : profileOf(inf) === "graphic"
+        ? `${inf.name} — GRAPHIC account: authoritative, specific, listy; must read as a designed card title`
+        : `${inf.name} — UGC account: personal, first-person, lived-experience voice`;
+    const pillar = pillars[i];
+    const direction = pillar
+      ? `PILLAR — write this hook in the exact style and structure of: "${pillar}" (fresh wording, numbers, and specifics — a sibling, never a copy)`
+      : `EXPLORE — pick a playbook pattern we haven't used recently and test something new`;
+    return `${i + 1} → ${reg}\n   ${direction}`;
   });
 
   const client = new Anthropic();
@@ -144,7 +166,8 @@ async function writeHooks(influencers: Influencer[]): Promise<{ text: string; an
 // ---- 3. the autopilot ticket ---------------------------------------------------
 
 async function createTicket(board: Board, influencers: Influencer[]): Promise<void> {
-  const hooks = await writeHooks(influencers);
+  const pillars = await nextPillars(HOOKS_PER_RUN);
+  const hooks = await writeHooks(influencers, pillars);
   const stored = await addHooks(hooks);
   const stamp = new Date().toISOString().slice(0, 16).replace("T", " ");
 
@@ -164,7 +187,7 @@ async function createTicket(board: Board, influencers: Influencer[]): Promise<vo
     "_Assigned concepts get images for that influencer automatically; the bench concept lands in Needs Approval for manual use._",
     "",
     "Rationale:",
-    ...hooks.map((h, i) => `${i + 1}. (${h.angle}) ${h.rationale}`),
+    ...hooks.map((h, i) => `${i + 1}. (${h.angle}${pillars[i] ? " · pillar" : " · explore"}) ${h.rationale}`),
   ].join("\n");
 
   const t = await board.createIssue(`🧠 Autopilot hooks — ${stamp}`, STATES.queue, body);

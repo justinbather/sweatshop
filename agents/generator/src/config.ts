@@ -7,7 +7,7 @@ import { usePg, getConfigValue } from "./db";
  * Non-secret shared app settings (image model, autopilot run times).
  *   fs (desktop): ~/.sweatshop/config.json  ·  pg (server): app_config key 'config'
  */
-export type AppConfig = { imageModel?: string; autopilotTimes?: string[] };
+export type AppConfig = { imageModel?: string; autopilotTimes?: string[]; pillars?: string[]; reportTime?: string };
 
 const FILE = join(DATA_DIR, "config.json");
 

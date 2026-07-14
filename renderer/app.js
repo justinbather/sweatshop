@@ -274,6 +274,132 @@
     };
   }
 
+  // ---- setup: keys, pillars, schedules --------------------------------------
+  async function mountSettings() {
+    const api = window.studio && window.studio.secrets;
+    if (!api) {
+      document.querySelectorAll('[data-status]').forEach(el => { el.textContent = 'run in app'; });
+      return;
+    }
+    async function refresh() {
+      const status = await api.status();
+      document.querySelectorAll('[data-status]').forEach(el => {
+        const s = status[el.dataset.status];
+        el.textContent = s && s.set ? `● saved ${s.masked}` : 'not set';
+        el.classList.toggle('ok', !!(s && s.set));
+      });
+    }
+    await refresh();
+    const save = async (name) => {
+      const input = document.querySelector(`[data-secret="${name}"]`);
+      const value = (input.value || '').trim();
+      if (!value) return;
+      const btn = document.querySelector(`[data-save-secret="${name}"]`);
+      if (btn) btn.disabled = true;
+      await api.set(name, value);
+      input.value = '';
+      await refresh();
+      if (btn) btn.disabled = false;
+    };
+    document.querySelectorAll('[data-save-secret]').forEach(btn =>
+      btn.addEventListener('click', () => save(btn.dataset.saveSecret)));
+    document.querySelectorAll('[data-secret]').forEach(input =>
+      input.addEventListener('keydown', e => { if (e.key === 'Enter') save(input.dataset.secret); }));
+
+
+    // content pillars (non-secret config)
+    const cfgP = window.studio && window.studio.config;
+    const pillarBox = document.getElementById('pillarBox');
+    if (cfgP && pillarBox) {
+      const escp = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      let pillars = [];
+      try { pillars = (await cfgP.get()).pillars || []; } catch { /* fresh */ }
+      const renderPillars = () => {
+        pillarBox.innerHTML = pillars.map((p, i) => `
+          <div class="pillar-row ${p.toLowerCase() === 'random' ? 'rand' : ''}">
+            <span class="pillar-text">${p.toLowerCase() === 'random' ? '🎲 random — explore a new pattern' : escp(p)}</span>
+            <button type="button" class="slot-del" data-pillar-del="${i}" title="Remove">×</button>
+          </div>`).join('')
+          + `<div class="pillar-add">
+              <input class="field field-full" id="pillarInput" placeholder='e.g. 6 things that healed my gut in 2 months' />
+              <button type="button" class="btn sm" id="pillarAdd">+ Add pillar</button>
+              <button type="button" class="btn sm" id="pillarAddRand">+ 🎲 random slot</button>
+            </div>`;
+      };
+      pillarBox.addEventListener('click', async (e) => {
+        const del = e.target.closest('[data-pillar-del]');
+        if (del) { pillars.splice(+del.dataset.pillarDel, 1); await cfgP.set({ pillars }); renderPillars(); return; }
+        if (e.target.closest('#pillarAdd')) {
+          const inp = document.getElementById('pillarInput');
+          const v = inp && inp.value.trim();
+          if (v) { pillars.push(v); await cfgP.set({ pillars }); renderPillars(); }
+          return;
+        }
+        if (e.target.closest('#pillarAddRand')) { pillars.push('random'); await cfgP.set({ pillars }); renderPillars(); }
+      });
+      pillarBox.addEventListener('keydown', async (e) => {
+        if (e.key === 'Enter' && e.target.id === 'pillarInput') {
+          e.preventDefault();
+          const v = e.target.value.trim();
+          if (v) { pillars.push(v); await cfgP.set({ pillars }); renderPillars(); }
+        }
+      });
+      renderPillars();
+    }
+
+    // autopilot run times (non-secret config)
+    const cfgApi = window.studio && window.studio.config;
+    const apSlots = document.getElementById('autopilotSlots');
+    if (cfgApi && apSlots) {
+      let times = [];
+      try { times = (await cfgApi.get()).autopilotTimes || []; } catch { /* fresh */ }
+      const renderTimes = () => {
+        apSlots.innerHTML = times.map(t =>
+          `<span class="slot-chip">${t}<button type="button" class="slot-del" data-aptime="${t}" title="Remove">×</button></span>`).join('')
+          + '<span class="slot-add"><input type="time" class="field slot-input" id="apTimeInput" value="09:00" />'
+          + '<button type="button" class="btn sm" id="apTimeAdd">+ Add</button></span>';
+      };
+      apSlots.addEventListener('click', async (e) => {
+        const del = e.target.closest('[data-aptime]');
+        if (del) { times = times.filter(t => t !== del.dataset.aptime); await cfgApi.set({ autopilotTimes: times }); renderTimes(); return; }
+        if (e.target.closest('#apTimeAdd')) {
+          const inp = document.getElementById('apTimeInput');
+          const t = inp && inp.value;
+          if (t && !times.includes(t)) { times = [...times, t].sort(); await cfgApi.set({ autopilotTimes: times }); renderTimes(); }
+        }
+      });
+      renderTimes();
+    }
+
+    // daily report time (non-secret config)
+    const cfgR = window.studio && window.studio.config;
+    const repTime = document.querySelector('[data-config-time="reportTime"]');
+    if (cfgR && repTime) {
+      const st = document.querySelector('[data-config-status="reportTime"]');
+      cfgR.get().then(c => { if (c.reportTime) repTime.value = c.reportTime; if (st) st.textContent = '● saved'; });
+      repTime.addEventListener('change', async () => {
+        if (st) st.textContent = 'saving…';
+        await cfgR.set({ reportTime: repTime.value });
+        if (st) { st.textContent = '● saved'; st.classList.add('ok'); }
+      });
+    }
+
+    // image-model toggle (non-secret config)
+    const cfg = window.studio && window.studio.config;
+    const modelSel = document.querySelector('[data-config="imageModel"]');
+    if (cfg && modelSel) {
+      const statusEl = document.querySelector('[data-config-status="imageModel"]');
+      const conf = await cfg.get();
+      modelSel.value = conf.imageModel === 'openai' ? 'openai' : 'gemini';
+      if (statusEl) statusEl.textContent = '● saved';
+      modelSel.addEventListener('change', async () => {
+        if (statusEl) statusEl.textContent = 'saving…';
+        await cfg.set({ imageModel: modelSel.value });
+        if (statusEl) { statusEl.textContent = '● saved'; statusEl.classList.add('ok'); }
+      });
+    }
+  }
+
   // ---- board: the full Linear surface -----------------------------------------
   const BOARD_COLS = ['Generation Queue', 'Needs Approval', 'Revise', 'Creation Queue', 'Ready to Post', 'Posting Queue', 'Drafted', 'Published', 'Generated', 'Rejected'];
   // contextual quick actions per column: [label, targetState]
